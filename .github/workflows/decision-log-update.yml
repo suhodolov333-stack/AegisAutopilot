@@ -1,0 +1,43 @@
+name: Decision Log Update
+on:
+  push:
+    branches: [ "**" ]
+    paths-ignore:
+      - 'ЭгидаКопилот.md'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare timestamp
+        id: t
+        run: echo "ts=$(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_OUTPUT
+      - name: Show (non-main) info
+        if: github.ref != 'refs/heads/main'
+        run: echo "Сработало в ветке ${GITHUB_REF##*/}. Журнал не трогаем.";
+      - name: Append + Commit (main only)
+        if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message,'Auto: log update')
+        run: |
+          FILE="ЭгидаКопилот.md"
+          if [ ! -f "$FILE" ]; then
+            echo "# Журнал решений и действий системы \"ЭгидаКопилот\"" > "$FILE"
+            echo "" >> "$FILE"
+            echo "---" >> "$FILE"
+            echo "" >> "$FILE"
+          fi
+          echo "" >> "$FILE"
+          echo "### [${{ steps.t.outputs.ts }}] Автозапись" >> "$FILE"
+          echo "**Коммит:** ${{ github.event.head_commit.message }}" >> "$FILE"
+          echo "**Автор:** ${{ github.event.head_commit.author.name }}" >> "$FILE"
+          echo "**Ветка:** main" >> "$FILE"
+          echo "**Источник:** push" >> "$FILE"
+          echo "" >> "$FILE"
+          echo "---" >> "$FILE"
+          git config user.name "aegis-bot"
+          git config user.email "aegis-bot@users.noreply.github.com"
+          git add "$FILE"
+          git diff --cached --quiet && echo "No changes" || git commit -m "Auto: log update"
+          git push
