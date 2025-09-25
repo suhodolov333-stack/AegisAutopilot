@@ -18,7 +18,7 @@
 
 ## 2) Ручной запуск
 
-Запусти `scripts/run_pull_build_report.bat`.  
+Запусти `run_pull_build_report_Version2.bat`.  
 Результат:
 - `build.log` в корне репозитория,
 - отчёт `reports/build_YYYYMMDD_HHMMSS.md` и `reports/last_build.md`,
@@ -30,7 +30,7 @@
 - Создать задачу:
   - Триггер: по расписанию, каждые 10 минут.
   - Действие: Запуск программы `cmd`
-  - Аргументы: `/c "C:\PATH\TO\repo\scripts\run_pull_build_report.bat"`
+  - Аргументы: `/c "C:\PATH\TO\AegisAutopilot\run_pull_build_report_Version2.bat"`
   - Флажок: "Выполнять с наивысшими правами".
 - Готово.
 
