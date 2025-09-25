@@ -8,10 +8,10 @@ function Write-Err ($msg){ Write-Host "[ERR ] $msg" -ForegroundColor Red }
 
 # 1) Загрузка конфигурации
 if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
-  $ConfigPath = Join-Path $PSScriptRoot "..\config\build-config.json"
+  $ConfigPath = Join-Path $PSScriptRoot "..\config\build-config_Version2.json"
 }
 if (!(Test-Path $ConfigPath)) {
-  Write-Err "Не найден config/build-config.json. Передай правильный путь параметром или создай файл."
+  Write-Err "Не найден config/build-config_Version2.json. Передай правильный путь параметром или создай файл."
   exit 1
 }
 $configJson = Get-Content $ConfigPath -Raw | ConvertFrom-Json

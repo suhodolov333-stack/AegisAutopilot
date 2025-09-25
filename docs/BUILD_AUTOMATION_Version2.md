@@ -6,7 +6,7 @@
 
 ## 1) Настрой конфиг
 
-Файл: `config/build-config.json` — проверь и поправь пути:
+Файл: `config/build-config_Version2.json` — проверь и поправь пути:
 - `RepoPath` — путь к папке репозитория (внутри Data Folder MT5).
 - `MetaEditorPath` — путь к `metaeditor64.exe`.
 - `EAPath` — путь к .mq5 (советнику).
@@ -18,7 +18,7 @@
 
 ## 2) Ручной запуск
 
-Запусти `scripts/run_pull_build_report.bat`.  
+Запусти `scripts/run_pull_build_report_Version2.bat`.  
 Результат:
 - `build.log` в корне репозитория,
 - отчёт `reports/build_YYYYMMDD_HHMMSS.md` и `reports/last_build.md`,
@@ -30,7 +30,7 @@
 - Создать задачу:
   - Триггер: по расписанию, каждые 10 минут.
   - Действие: Запуск программы `cmd`
-  - Аргументы: `/c "C:\PATH\TO\repo\scripts\run_pull_build_report.bat"`
+  - Аргументы: `/c "C:\PATH\TO\repo\scripts\run_pull_build_report_Version2.bat"`
   - Флажок: "Выполнять с наивысшими правами".
 - Готово.
 
