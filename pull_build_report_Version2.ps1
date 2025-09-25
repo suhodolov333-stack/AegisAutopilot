@@ -94,3 +94,84 @@ $summary = @"
 - Результат: $errs ошибок, $warns предупреждений
 
 ## Топ ошибок (фрагменты)
+
+```
+$($topErrors -join "`n")
+```
+
+## Полный лог
+
+[build.log]($repoUrl/blob/$branchName/build.log)
+
+"@
+
+$summary | Out-File -FilePath $reportPath -Encoding UTF8
+$summary | Out-File -FilePath $lastPath -Encoding UTF8
+
+Write-Info "Отчёт сохранён: $reportPath"
+
+# 7) Коммит отчёта (если есть изменения)
+try {
+  git -C "$RepoPath" add . --all
+  $status = git -C "$RepoPath" status --porcelain
+  if ($status) {
+    git -C "$RepoPath" commit -m "Авто-сборка: $errs ошибок, $warns предупреждений - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    git -C "$RepoPath" push
+    Write-Info "Изменения закоммичены и отправлены в репозиторий"
+  } else {
+    Write-Info "Нет изменений для коммита"
+  }
+} catch {
+  Write-Warn "Ошибка при коммите: $_"
+}
+
+# 8) Создание Issue при ошибках (если настроено)
+if ($CreateIssue -and $errs -gt 0) {
+  $issueTitle = "Ошибки компиляции: $errs errors, $warns warnings"
+  $issueBody = @"
+## Отчёт об ошибках компиляции
+
+**Дата:** $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+**Ветка:** $branchName
+**Советник:** $eaName
+
+### Статистика
+- Ошибки: $errs
+- Предупреждения: $warns
+
+### Топ ошибок
+``````
+$($topErrors -join "`n")
+``````
+
+Автоматически создано системой сборки.
+"@
+
+  $token = $env:GITHUB_TOKEN
+  if ($token) {
+    try {
+      $headers = @{
+        "Authorization" = "token $token"
+        "Accept" = "application/vnd.github.v3+json"
+        "User-Agent" = "AegisAutopilot-BuildSystem"
+      }
+      
+      $issueData = @{
+        title = $issueTitle
+        body = $issueBody
+        labels = @("bug", "build-error")
+      } | ConvertTo-Json -Depth 10
+      
+      $apiUrl = "https://api.github.com/repos/$RepoSlug/issues"
+      
+      $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -Body $issueData -ContentType "application/json"
+      Write-Info "Issue создан: $($response.html_url)"
+    } catch {
+      Write-Err "Ошибка при создании Issue: $_"
+    }
+  } else {
+    Write-Warn "GITHUB_TOKEN не найден в переменных среды. Issue не создан."
+  }
+}
+
+Write-Info "Готово!"

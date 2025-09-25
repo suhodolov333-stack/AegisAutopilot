@@ -1,0 +1,18 @@
+# Build outputs
+build.log
+*.ex5
+
+# Reports
+reports/
+
+# Backups
+backup/
+
+# Temporary files
+*.tmp
+*.temp
+downloadfile.bin
+
+# OS files
+Thumbs.db
+.DS_Store

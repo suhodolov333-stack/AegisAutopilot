@@ -41,8 +41,8 @@
   <Actions Context="Author">
     <Exec>
       <Command>cmd</Command>
-      <Arguments>/c "C:\PATH\TO\repo\scripts\run_pull_build_report.bat"</Arguments>
-      <WorkingDirectory>C:\PATH\TO\repo\scripts</WorkingDirectory>
+      <Arguments>/c "C:\PATH\TO\AegisAutopilot\run_pull_build_report_Version2.bat"</Arguments>
+      <WorkingDirectory>C:\PATH\TO\AegisAutopilot</WorkingDirectory>
     </Exec>
   </Actions>
 </Task>
