@@ -1,0 +1,8 @@
+{
+  "_comment": "Каркас правил авто-анализа (будет расширен на этапе авто-фиксов)",
+  "rules": [
+    { "pattern": "undeclared identifier", "suggest": "Проверь опечатку или добавь нужный #include (aegis_*.mqh)." },
+    { "pattern": "wrong parameters count", "suggest": "Сверь сигнатуру функции и число аргументов." },
+    { "pattern": "cannot convert", "suggest": "Проверь типы: возможно нужно явное приведение или изменить тип параметра." }
+  ]
+}

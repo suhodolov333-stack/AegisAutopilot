@@ -1,0 +1,86 @@
+name: Windows Build & Parse
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "experts/**"
+      - "includes/**"
+      - "scripts/**"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "experts/**"
+      - "includes/**"
+      - "scripts/**"
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: self-hosted
+    labels: ["win-mt5"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile EA
+        shell: powershell
+        env:
+          META: ${{ secrets.AEGIS_METAEDITOR_PATH }}
+          EA_PATH: ${{ secrets.AEGIS_EA_PATH || 'experts\\Aegis_S_Base.mq5' }}
+        run: |
+          if (!(Test-Path $env:META)) { Write-Error "MetaEditor not found at $env:META"; exit 1 }
+          Write-Host "[BUILD] Compile $env:EA_PATH"
+          & "$env:META" /compile:$env:EA_PATH /log:build.log
+          if (!(Test-Path build.log)) { Write-Error "build.log missing"; exit 1 }
+      - name: Parse build log
+        shell: pwsh
+        run: |
+          python scripts/parse_build_log.py
+          Get-Content reports/build_report_latest.md | Write-Host
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-report-${{ github.sha }}
+          path: |
+            build.log
+            reports/build_report_latest.md
+            reports/build_report_latest.json
+      - name: Post PR comment (if PR)
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('reports/build_report_latest.json','utf8'));
+            const body = [
+              '### Build Analysis',
+              `Errors: **${p.error_count}**, Warnings: **${p.warning_count}**`,
+              p.error_count>0 ? '❌ Compilation failed.' : '✅ Compilation success.',
+              '',
+              'First errors (up to 5):',
+              ...(p.errors||[]).slice(0,5).map(e => `- \`${e.file}(${e.line},${e.col})\`: ${e.code} — ${e.msg}${e.hint?" ("+e.hint+")":""}`)
+            ].join('\n');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });
+      - name: Create Issue on failure
+        if: ${{ failure() }}
+        uses: actions/github-script@v7
+        with:
+            script: |
+              const fs = require('fs');
+              if (!fs.existsSync('reports/build_report_latest.json')) { core.info('No report json; skip issue.'); return; }
+              const p = JSON.parse(fs.readFileSync('reports/build_report_latest.json','utf8'));
+              if (p.error_count === 0) { core.info('No errors; skip issue.'); return; }
+              const lines = p.errors.slice(0,10).map(e => `- \`${e.file}(${e.line},${e.col})\` ${e.code} — ${e.msg}${e.hint?" ("+e.hint+")":""}`).join('\n');
+              const body = `Автоматический отчёт сборки\n\nОшибок: ${p.error_count}\nПредупреждений: ${p.warning_count}\n\nПервые ошибки:\n${lines}\n\nАртефакты: см. вкладку Actions (build-report-${process.env.GITHUB_SHA}).`;
+              github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Build fail: ${process.env.GITHUB_SHA.substring(0,7)}`,
+                body
+              });
