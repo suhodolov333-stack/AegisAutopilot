@@ -1,6 +1,7 @@
 #property strict
 #property copyright "Aegis"
 #property version   "5.1.0-mod"
+// [CI] smoke trigger:
 
 #include "..\\includes\\aegis_core.mqh"
 
