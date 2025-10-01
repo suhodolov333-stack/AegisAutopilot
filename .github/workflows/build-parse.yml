@@ -1,4 +1,4 @@
-name: Build Log Parse (Universal)
+name: Build Log Parse
 
 on:
   push:
