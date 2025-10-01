@@ -16,6 +16,27 @@
 #property version "1.61"
 #property description "Aegis S5 RU MIN: rolling log + state durations + scenarios (DRY, fix trim)"
 
+#include "includes/aegis_core.mqh"
+
+////////////////////////////////////////////////////////////
+// CONSTANTS AND VARIABLES (needed for extracted modules)
+////////////////////////////////////////////////////////////
+//================= Базовые массивы/константы =========================
+string SYMS[4] = {"BTCUSD","LTCUSD","BCHUSD","ETHUSD"};
+double WEIGHTS[4] = {1,1,2,4};
+double WEIGHTS_SUM = 8.0;
+
+//================= Входные параметры риска ===========================
+input double DAILY_RISK_PCT       = 3.0;
+input double RISK_BUFFER_PCT      = 5.0;
+input double MAIN_CAP             = 1.9;
+input double MARGIN_PCT           = 80.0;
+input double PORTFOLIO_RISK_PCT   = 6.0;
+input ENUM_TIMEFRAMES GridTF_Default = PERIOD_M5;
+
+//================= FSM состояния =========================
+FlowState flow[4];  // Объявление перенесено в aegis_risk.mqh
+
 ////////////////////////////////////////////////////////////
 // INPUTS
 ////////////////////////////////////////////////////////////
@@ -55,11 +76,11 @@ input string ScenarioConfig             = "1;2;3";
 input double ScenarioVolume             = 0.10;
 
 ////////////////////////////////////////////////////////////
-// ENUM STATE
+// ENUM STATE (moved to includes/aegis_fsm.mqh)
 ////////////////////////////////////////////////////////////
-enum AegisState { STATE_IDLE=0, STATE_MONITOR=1, STATE_PROTECT=2, STATE_SAFE=3 };
-AegisState g_state = STATE_IDLE;
+// AegisState g_state = STATE_IDLE; // Declaration moved to includes/aegis_fsm.mqh
 
+// LEGACY_BLOCK_START - Business logic specific to this EA (не перенесено в модули)
 ////////////////////////////////////////////////////////////
 // CONTEXT
 ////////////////////////////////////////////////////////////
@@ -109,12 +130,8 @@ double   g_scenarioPrice[5];
 double   g_scenarioNewAvg[5];
 
 ////////////////////////////////////////////////////////////
-// HELPERS
+// HELPERS (removed - now in includes/aegis_utils.mqh)
 ////////////////////////////////////////////////////////////
-double Pt(){ return _Point; }
-double NowMs(){ return (double)GetTickCount(); }
-string TS(){ return TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS); }
-string PosTypeName(long t){ if(t==POSITION_TYPE_BUY) return "BUY"; if(t==POSITION_TYPE_SELL) return "SELL"; return "UNKNOWN"; }
 
 void ResetCtx()
 {
@@ -355,10 +372,10 @@ void CalcPrimary()
 {
    if(!g_ctx.has_pos){ g_simNewAvg=0.0; return; }
    double avg=g_ctx.entry;
-   g_ctx.p_sl=(SL_Points>0)?(g_ctx.type==POSITION_TYPE_BUY?avg-SL_Points*Pt():avg+SL_Points*Pt()):0.0;
-   g_ctx.p_tp=(TP_Points>0)?(g_ctx.type==POSITION_TYPE_BUY?avg+TP_Points*Pt():avg-TP_Points*Pt()):0.0;
+   g_ctx.p_sl=(SL_Points>0)?(g_ctx.type==POSITION_TYPE_BUY?avg-SL_Points*_Point:avg+SL_Points*_Point):0.0;
+   g_ctx.p_tp=(TP_Points>0)?(g_ctx.type==POSITION_TYPE_BUY?avg+TP_Points*_Point:avg-TP_Points*_Point):0.0;
    g_ctx.p_avg=(AvgStepPoints>0 && g_NextAvgIndex>0)?
-               (g_ctx.type==POSITION_TYPE_BUY?avg-g_NextAvgIndex*AvgStepPoints*Pt():avg+g_NextAvgIndex*AvgStepPoints*Pt()):0.0;
+               (g_ctx.type==POSITION_TYPE_BUY?avg-g_NextAvgIndex*AvgStepPoints*_Point:avg+g_NextAvgIndex*AvgStepPoints*_Point):0.0;
 
    if(EnableAvgSimulation && g_ctx.p_avg>0 && SimulatedExtraVolume>0)
       g_simNewAvg=(avg*g_ctx.volume + g_ctx.p_avg*SimulatedExtraVolume)/(g_ctx.volume+SimulatedExtraVolume);
@@ -377,8 +394,8 @@ void CalcScenarios()
       int mult=g_scenarioSteps[i];
       if(mult<=0) continue;
       double price=(g_ctx.type==POSITION_TYPE_BUY)?
-                   (avg - mult*AvgStepPoints*Pt()):
-                   (avg + mult*AvgStepPoints*Pt());
+                   (avg - mult*AvgStepPoints*_Point):
+                   (avg + mult*AvgStepPoints*_Point);
       g_scenarioPrice[i]=price;
       if(ScenarioVolume>0)
          g_scenarioNewAvg[i]=(avg*g_ctx.volume + price*ScenarioVolume)/(g_ctx.volume+ScenarioVolume);
@@ -401,7 +418,7 @@ bool CheckInv(string &m)
    if(g_ctx.has_pos)
    {
       double avg=g_ctx.entry;
-      double md=MinDistancePoints*Pt();
+      double md=MinDistancePoints*_Point;
       if(g_ctx.p_sl>0 && MathAbs(avg-g_ctx.p_sl)<md){ ok=false; m+="SLdist<Min; "; }
       if(g_ctx.p_tp>0 && MathAbs(avg-g_ctx.p_tp)<md){ ok=false; m+="TPdist<Min; "; }
       if(InvariantDirectionalStrict)
@@ -496,7 +513,7 @@ void LogRow(string tag="NONE")
 
    double spread=0.0;
    if(SymbolInfoDouble(g_symbol,SYMBOL_BID)!=0 || SymbolInfoDouble(g_symbol,SYMBOL_ASK)!=0)
-      spread=(SymbolInfoDouble(g_symbol,SYMBOL_ASK)-SymbolInfoDouble(g_symbol,SYMBOL_BID))/Pt();
+      spread=(SymbolInfoDouble(g_symbol,SYMBOL_ASK)-SymbolInfoDouble(g_symbol,SYMBOL_BID))/_Point;
 
    FileWrite(g_fileHandle,
              TS(), g_tick, (int)g_state,
@@ -640,4 +657,5 @@ void OnDeinit(const int reason)
    CloseLog();
    EventKillTimer();
 }
+// LEGACY_BLOCK_END
 //+------------------------------------------------------------------+

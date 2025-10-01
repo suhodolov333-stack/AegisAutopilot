@@ -1,0 +1,10 @@
+Microsoft Windows [Version 10.0.19041.1000]
+(c) Microsoft Corporation. Все права защищены.
+
+C:\Path\To\MetaTrader 5>metaeditor64.exe /compile:experts\Aegis_S_Base.mq5 /log:build.log
+MetaEditor 5.00 build 3300 started (x64)
+Compiling 'experts\Aegis_S_Base.mq5'
+includes\aegis_constants.mqh(5,1): warning C4018: possible loss of data
+includes\aegis_planning.mqh(45,15): information: trying to call 'iOpen' with 4 parameters
+experts\Aegis_S_Base.mq5 compiled successfully
+Result: 0 error(s), 1 warning(s)                 19 ms
