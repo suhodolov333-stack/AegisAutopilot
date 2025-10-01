@@ -1,12 +1,9 @@
-name: Build Log Parse (Placeholder)
+name: Build Log Parse (Universal)
+
 on:
   push:
-    branches: [ "**" ]
-    paths:
-      - 'build.log'
-      - 'scripts/parse_build_log.py'
-      - 'experts/**'
-      - 'includes/**'
+    branches:
+      - "*"
   workflow_dispatch:
 
 jobs:
@@ -21,6 +18,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-report
-          path: |
-            reports/build_report_latest.md
-            reports/build_report_latest.json
+          path: reports/build_report_latest.md
+
