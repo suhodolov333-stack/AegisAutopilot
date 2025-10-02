@@ -1,9 +1,6 @@
 name: Ping self-hosted
 
 on:
-  push:
-    paths:
-      - .github/workflows/ping-runner.yml
   workflow_dispatch:
 
 jobs:
