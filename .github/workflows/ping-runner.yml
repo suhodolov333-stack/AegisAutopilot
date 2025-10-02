@@ -1,4 +1,4 @@
-name: Ping self-hosted
+name: Ping self-hosted runner
 
 on:
   workflow_dispatch:
@@ -7,9 +7,7 @@ jobs:
   ping:
     runs-on: [self-hosted, aegis-mt5]
     steps:
-      - uses: actions/checkout@v4
       - name: Show runner info
-        shell: cmd
         run: |
           echo USER=%USERNAME%
           echo COMPUTER=%COMPUTERNAME%
