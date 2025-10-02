@@ -1,0 +1,41 @@
+name: Build SuhabFiboTrader
+
+on:
+  push:
+    paths:
+      - 'SuhabFiboTrade/**'
+  pull_request:
+    paths:
+      - 'SuhabFiboTrade/**'
+
+jobs:
+  build:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Compile EA
+        run: |
+          "C:\Program Files\MetaTrader 5\metaeditor64.exe" ^
+          /compile:"C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\SuhabFiboTrade\SuhabFiboTrader_v5674.mq5" ^
+          /log:"C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\config\logs\SuhabFiboTrader_build.log"
+
+      - name: Backup EX5
+        if: success()
+        run: |
+          mkdir -p "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\config\backup_suhab"
+          copy "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\SuhabFiboTrade\SuhabFiboTrader_v5674.ex5" "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\config\backup_suhab\"
+
+      - name: Upload build log
+        uses: actions/upload-artifact@v3
+        with:
+          name: suhab-build-log
+          path: "C:/Users/Administrator/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075/MQL5/Experts/Aegis/config/logs/SuhabFiboTrader_build.log"
+
+      - name: Upload EX5 artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: suhab-ex5
+          path: "C:/Users/Administrator/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075/MQL5/Experts/Aegis/config/backup_suhab/SuhabFiboTrader_v5674.ex5"
