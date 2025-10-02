@@ -1,0 +1,61 @@
+Сгенерируй советник MQL5 “SuhabEA” (один .mq5, самодостаточный). Источник данных — только терминал и UI‑панель. CSV/внешние файлы не использовать.
+
+Функции продукта:
+1) Две фибо‑сетки:
+   - Left (вход/усреднение): L1..L4.
+   - Right (тейки): TP1..TPn (минимум TP1..TP2).
+   Пользователь рисует стандартный Fibonacci‑объект на графике и привязывает его к роли (Left/Right) кнопкой Bind Fibo на панели.
+
+2) Полноценное построение фибо:
+   - По двум анкорам A=baseStart и B=baseEnd (из объекта) вычисли:
+     dir = sign(B−A), span=|B−A|.
+     Расширения (Left): e1618=A+dir*span*1.618, e2618, e3618, e4236 → L1..L4 по порядку от A.
+     Таргеты (Right): t0000=B; t0382=B+(A−B)*0.382; t0500; t0618; t0786; t0886; t1618.
+     Базовый набор TP: [t0786, t1618] (можно расширять параметром).
+   - Если у объекта отсутствуют нужные уровни — дострой их программно.
+   - Проверяй монотонность уровней в сторону dir; при ошибке — «Invalid Fibo geometry».
+
+3) Панель:
+   - Поля: risk_pct, leverage, base_price, weights[4], SL_MULT, margin_limit_pct, retryCount, stopOnError, DryRunDefault.
+   - Кнопки: Bind Left, Bind Right, Place All, Confirm/Cancel, чекбокс DryRun.
+   - Таблица расчётов: по каждому L‑уровню entry/sl/tp/lots/risk/marginImpact/статус; сводка totalRiskMoney и projectedMarginPct.
+
+4) Логика направления:
+   - isLong = mean(TP) > mean(L).
+   - sign = +1 для isLong, иначе −1.
+
+5) Расчёт объёмов и SL/TP (строго):
+   totalRiskMoney = (risk_pct/100)*AccountBalance().
+   Для i=0..3:
+     entry_i = L[i].
+     SL_i = base_price − sign * ( |entry_i − base_price| * SL_MULT ).
+     TP_i = TP[i], если есть; иначе общий TP=mean(TP) или настройка «единый TP».
+     contractSize = SymbolInfoDouble(SYMBOL_TRADE_CONTRACT_SIZE) > 0.
+     priceFactor  = SYMBOL_TRADE_TICK_VALUE, иначе fallback: SYMBOL_TRADE_TICK_SIZE*contractSize (>0).
+     lots_raw = totalRiskMoney*(weights[i]/sum(weights)) / ( |entry_i − SL_i| * contractSize * priceFactor ).
+     step=min/max из SYMBOL_VOLUME_STEP/MIN/MAX; lots=floor(lots_raw/step)*step; если <min → пометить «too small» (не отправлять).
+
+6) Маржинальная валидация:
+   addMargin_i = entry_i*contractSize*lots/leverage (leverage>0).
+   projectedPct = (AccountMargin()+Σ addMargin_i)/AccountBalance()*100.
+   Если projectedPct ≥ margin_limit_pct → отклонить весь план («margin projection exceeded»).
+
+7) Исполнение (только по клику Place All):
+   - Всегда сначала Dry‑run: построить план, выполнить валидации, показать отчёт на панели (без OrderSend).
+   - По Confirm: PlaceOrderSafe (CTrade + retryCount, stopOnError).
+   - Защита от повторных кликов: mutex флаг.
+
+8) Обработка ошибок:
+   - Отсутствуют contractSize/priceFactor/leverage → «Needs clarification: <param>».
+   - NaN/Inf/нулевые дистанции → помечать уровень invalid и не отправлять.
+   - Все сообщения — человекочитаемые, лог с префиксом [SUHAB].
+
+9) Acceptance:
+   - Привязка обеих сеток работает, при неполных уровнях объект дополняется.
+   - Dry‑run выдаёт корректную таблицу и сводку; без OrderSend.
+   - Live после Confirm выставляет заявки с корректным lots, SL/TP, с учётом шагов и лимитов.
+
+Сгенерируй один .mq5 файл с:
+- Реализацией панели, чтения/достройки фибо, расчётов, dry‑run отчёта, PlaceOrderSafe.
+- Комментариями у формул (какой параметр откуда).
+- Никаких жёстких констант: всё — через inputs панели.
