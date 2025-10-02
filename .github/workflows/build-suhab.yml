@@ -35,7 +35,27 @@ jobs:
           path: "C:/Users/Administrator/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075/MQL5/Experts/Aegis/config/logs/SuhabFiboTrader_build.log"
 
       - name: Upload EX5 artifact
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: suhab-ex5
           path: "C:/Users/Administrator/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075/MQL5/Experts/Aegis/config/backup_suhab/SuhabFiboTrader_v5674.ex5"
+
+      - name: Append error to journal
+        if: failure()
+        run: |
+          set LOGFILE=C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\config\logs\SuhabFiboTrader_build.log
+          set MQ5FILE=C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\SuhabFiboTrade\SuhabFiboTrader_v5674.mq5
+
+          echo // [ERROR][%DATE% %TIME%] >> %MQ5FILE%
+          type %LOGFILE% >> %MQ5FILE%
+          echo // ============================================ >> %MQ5FILE%
+
+      - name: Commit updated error log
+        if: failure()
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add SuhabFiboTrade/SuhabFiboTrader_v5674.mq5
+          git commit -m "chore: update error journal from build log"
+          git push origin main
