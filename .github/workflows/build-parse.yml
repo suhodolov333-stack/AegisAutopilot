@@ -2,10 +2,7 @@ name: Build Log Parse
 
 on:
   push:
-    branches:
-      - "*"
-  workflow_dispatch:
-
+    branches: [ "main" ]
 jobs:
   parse:
     runs-on: ubuntu-latest
