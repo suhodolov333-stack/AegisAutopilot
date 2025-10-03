@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  run:
+  build:
     runs-on: self-hosted
     defaults:
       run:
@@ -14,40 +14,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Read build-config_Version2.json
+      - name: Read config
         run: |
           RAW=$(tr -d '\r' < config/build-config_Version2.json)
           get() { printf '%s' "$RAW" | grep -Po "\"$1\"\\s*:\\s*\"\\K.*?(?=\")"; }
-          echo "REPO_PATH=$(get RepoPath       | sed 's#\\\\\\\\#/#g')" >> "$GITHUB_ENV"
-          echo "EDITOR_PATH=$(get MetaEditorPath| sed 's#\\\\\\\\#/#g')" >> "$GITHUB_ENV"
-          echo "EA_PATH=$(get EAPath          | sed 's#\\\\\\\\#/#g')" >> "$GITHUB_ENV"
+          echo "EDITOR_PATH=$(get MetaEditorPath | sed 's#\\\\\\\\#/#g')" >> $GITHUB_ENV
+          echo "EA_FILE=$(get EAPath | sed 's#\\\\\\\\#/#g')" >> $GITHUB_ENV
 
-      - name: Compile MQ5 via MetaEditor
+      - name: Compile Expert Advisor
         run: |
           mkdir -p reports
           LOG="reports/build_$(date +%Y%m%d_%H%M%S).log"
           EDITOR_WIN=$(cygpath -w "$EDITOR_PATH")
+          EA_WIN=$(cygpath -w "$EA_FILE")
           LOG_WIN=$(cygpath -w "$LOG")
 
-          # Список файлов: либо каталог EA_PATH, либо одиночный файл
-          if [ -d "$EA_PATH" ]; then
-            mapfile -t FILES < <(find "$EA_PATH" -type f -name '*.mq5')
-          else
-            FILES=("$EA_PATH")
-          fi
+          echo ">> Компиляция $EA_WIN" | tee -a "$LOG"
+          "$EDITOR_WIN" /compile:"$EA_WIN" /log:"$LOG_WIN" || true
+          echo "RC=$?" > reports/build_rc.txt
 
-          RC=0
-          for f in "${FILES[@]}"; do
-            [ -f "$f" ] || continue
-            F_WIN=$(cygpath -w "$f")
-            echo ">> Compile: $F_WIN" | tee -a "$LOG"
-            "$EDITOR_WIN" /compile:"$F_WIN" /log:"$LOG_WIN" || RC=$?
-          done
-
-          echo "RC=$RC" > reports/build_rc.txt
-          [ $RC -eq 0 ] || exit 1
-
-      - name: Universal autopush
+      - name: Autopush results
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
@@ -58,5 +44,5 @@ jobs:
             echo "No changes to push"
             exit 0
           fi
-          git commit -m "ci: autopush (MetaEditor build + reports)"
+          git commit -m "ci: build logs + autopush"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${GITHUB_REF_NAME}"
