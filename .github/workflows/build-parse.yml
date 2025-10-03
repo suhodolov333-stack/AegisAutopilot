@@ -7,6 +7,23 @@ jobs:
   parse:
     runs-on: ubuntu-latest
     steps:
+      - name: Push changes back to repo  # AEGIS_AUTO_PUSH_MARKER
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          git config user.name "aegis-bot"
+          git config user.email "aegis-bot@users.noreply.github.com"
+          git remote set-url origin https://${GH_TOKEN}@github.com/suhodolov333-stack/AegisAutopilot.git
+          git fetch --all
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to push"
+          else
+            git commit -m "ci: auto-push from runner"
+            # Пушим обратно в текущую ветку
+            git push origin HEAD:${GITHUB_REF#refs/heads/}
+          fi
       - uses: actions/checkout@v4
       - name: Parse build.log
         run: |
