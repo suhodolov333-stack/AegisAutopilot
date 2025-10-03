@@ -1,41 +1,90 @@
-permissions:
-  contents: write
-name: Build Log Parse
+name: Aegis Universal CI
 
 on:
   push:
     branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: "Принудительно компилировать MQ5"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
 jobs:
-  parse:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: [self-hosted, Windows]
+
+    env:
+      EA_PATH: MQL5\Experts\Aegis\SuhabFiboTrader_v5674.mq5
+      METAEDITOR_PATH: C:\Program Files\MetaTrader 5\metaeditor64.exe
+
     steps:
-      - name: Parse build.log
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+
+      - name: Set git identity
         run: |
-          python3 scripts/parse_build_log.py
-      - name: Upload report artifacts
+          git config --global user.name  "aegis-bot"
+          git config --global user.email "aegis-bot@users.noreply.github.com"
+
+      - name: Detect changes
+        id: changes
+        shell: pwsh
+        run: |
+          git fetch --depth=2 origin +${{ github.ref }}:${{ github.ref }}
+          $files = (git diff --name-only HEAD~1 HEAD) -join "`n"
+          Write-Host "Changed files: $files"
+
+          $mqlChanged = $false
+          if ($files -match '(^|/|\\)MQL5(/|\\)' -or $files -match '\.(mq5|mqh)$') { $mqlChanged = $true }
+
+          $force = "${{ github.event.inputs.force_build }}"
+          if ($force -eq "true") { $mqlChanged = $true }
+
+          if ($mqlChanged) {
+            echo "DO_BUILD=true" >> $env:GITHUB_ENV
+          } else {
+            echo "DO_BUILD=false" >> $env:GITHUB_ENV
+          }
+
+      - name: Compile EA with MetaEditor
+        if: env.DO_BUILD == 'true'
+        run: |
+          "${{ env.METAEDITOR_PATH }}" /compile:"${{ env.EA_PATH }}" /log:"compile.log"
+
+      - name: Show compile log
+        if: always()
+        run: |
+          if exist compile.log type compile.log
+
+      - name: Save compile.log as artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-report
-          path: reports/build_report_latest.md
+          name: compile-log
+          path: compile.log
+          if-no-files-found: ignore
+          retention-days: 7
 
+      - name: Append failure log
+        if: failure()
+        run: |
+          mkdir technical_log 2>nul
+          echo %date% %time% :: compile FAILED >> technical_log\compile_failures.log
+          if exist compile.log type compile.log >> technical_log\compile_failures.log
 
-# --- Автопуш результата из runner'а (после всех шагов) ---
-# AEGIS_AUTO_PUSH_MARKER
-${INDENT}- name: Auto push back to repo
-${INDENT}  if: always()
-${INDENT}  env:
-${INDENT}    GH_TOKEN: ${{ secrets.GH_TOKEN }}
-${INDENT}  run: |
-${INDENT}    git config user.name "aegis-bot"
-${INDENT}    git config user.email "aegis-bot@users.noreply.github.com"
-${INDENT}    # Уберём extraheader от actions/checkout, чтобы не мешал нашему токену
-${INDENT}    git config --global --unset-all http.https://github.com/.extraheader || true
-${INDENT}    git remote set-url origin https://${GH_TOKEN}@github.com/suhodolov333-stack/AegisAutopilot.git
-${INDENT}    git fetch --all
-${INDENT}    git add -A
-${INDENT}    if git diff --cached --quiet; then
-${INDENT}      echo "No changes to push"
-${INDENT}    else
-${INDENT}      git commit -m "ci: auto-push from runner"
-${INDENT}      git push origin HEAD:${GITHUB_REF#refs/heads/}
-${INDENT}    fi
+      - name: Push changes back to repo  # AEGIS_AUTO_PUSH_MARKER
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          git config --global --unset-all http.https://github.com/.extraheader || true
+          git remote set-url origin https://${GH_TOKEN}@github.com/suhodolov333-stack/AegisAutopilot.git
+          git fetch --all
+          git add -A
+          git diff --cached --quiet || (git commit -m "ci: auto-push from runner" && git push origin HEAD:${GITHUB_REF#refs/heads/})
