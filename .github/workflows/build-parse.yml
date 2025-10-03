@@ -1,74 +1,62 @@
-name: Универсальная работа (bash)
+name: CI MetaEditor Build + Logs + Autopush
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   run:
-    runs-on: [self-hosted, Windows]   # при другой метке замени тут
+    runs-on: self-hosted
     defaults:
       run:
         shell: bash
-    env:
-      GWS: ${{ github.workspace }}
-      EXPERTS_DIR: ${{ github.workspace }}/MQL5/Experts/Aegis
-      # возьми secrets.GH_TOKEN если есть, иначе встроенный GITHUB_TOKEN
-      PUSH_TOKEN: ${{ secrets.GH_TOKEN }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+      - uses: actions/checkout@v4
 
-      - name: Find MetaEditor.exe (Windows paths)
-        id: findme
-        shell: bash
+      - name: Read build-config_Version2.json
         run: |
-          set -e
-          CANDS=(
-            "/c/Program Files/MetaTrader 5/metaeditor64.exe"
-            "/c/Program Files/MetaTrader 5/MetaEditor.exe"
-            "/c/Program Files (x86)/MetaTrader 5/metaeditor.exe"
-          )
-          for p in "${CANDS[@]}"; do
-            if [ -f "$p" ]; then echo "ME=$p" >>"$GITHUB_OUTPUT"; exit 0; fi
-          done
-          echo "❌ MetaEditor.exe не найден. Установи MT5 или поправь пути." >&2
-          exit 1
+          RAW=$(tr -d '\r' < config/build-config_Version2.json)
+          get() { printf '%s' "$RAW" | grep -Po "\"$1\"\\s*:\\s*\"\\K.*?(?=\")"; }
+          echo "REPO_PATH=$(get RepoPath       | sed 's#\\\\\\\\#/#g')" >> "$GITHUB_ENV"
+          echo "EDITOR_PATH=$(get MetaEditorPath| sed 's#\\\\\\\\#/#g')" >> "$GITHUB_ENV"
+          echo "EA_PATH=$(get EAPath          | sed 's#\\\\\\\\#/#g')" >> "$GITHUB_ENV"
 
-      - name: Build *.mq5 (bash)
+      - name: Compile MQ5 via MetaEditor
         run: |
-          set -e
-          ME="${{ steps.findme.outputs.ME }}"
-          SRC="$EXPERTS_DIR"
-          [ -d "$SRC" ] || { echo "Нет каталога исходников: $SRC"; exit 1; }
-          mapfile -t FILES < <(find "$SRC" -type f -name '*.mq5' | sort)
-          [ ${#FILES[@]} -eq 0 ] && { echo "Нет *.mq5 — сборку пропускаю."; exit 0; }
-          mkdir -p "$GWS/build/logs"
-          FAIL=0
+          mkdir -p reports
+          LOG="reports/build_$(date +%Y%m%d_%H%M%S).log"
+          EDITOR_WIN=$(cygpath -w "$EDITOR_PATH")
+          LOG_WIN=$(cygpath -w "$LOG")
+
+          # Список файлов: либо каталог EA_PATH, либо одиночный файл
+          if [ -d "$EA_PATH" ]; then
+            mapfile -t FILES < <(find "$EA_PATH" -type f -name '*.mq5')
+          else
+            FILES=("$EA_PATH")
+          fi
+
+          RC=0
           for f in "${FILES[@]}"; do
-            base="$(basename "$f" .mq5)"
-            "$ME" "/compile:$f" "/log:$GWS/build/logs/$base.log" || FAIL=1
+            [ -f "$f" ] || continue
+            F_WIN=$(cygpath -w "$f")
+            echo ">> Compile: $F_WIN" | tee -a "$LOG"
+            "$EDITOR_WIN" /compile:"$F_WIN" /log:"$LOG_WIN" || RC=$?
           done
-          [ $FAIL -eq 0 ] || { echo "❌ Ошибки компиляции"; exit 1; }
 
-      - name: Universal autopush  # AEGIS_AUTO_PUSH_MARKER
-        if: always()
+          echo "RC=$RC" > reports/build_rc.txt
+          [ $RC -eq 0 ] || exit 1
+
+      - name: Universal autopush
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          set -e
           git config user.name  "aegis-bot"
           git config user.email "aegis-bot@users.noreply.github.com"
           git add -A
           if git diff --cached --quiet; then
-            echo "No changes to push."
+            echo "No changes to push"
             exit 0
           fi
-          # fallback на встроенный токен, если secrets.GH_TOKEN пуст
-          : "${PUSH_TOKEN:=${GITHUB_TOKEN}}"
-          git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git commit -m "ci: autopush from runner (bash)"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git commit -m "ci: autopush (MetaEditor build + reports)"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${GITHUB_REF_NAME}"
