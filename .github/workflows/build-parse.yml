@@ -1,48 +1,114 @@
-name: CI MetaEditor Build + Logs + Autopush
-
+name: CI MetaEditor Build + Codex Loop + Autopush
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - 'reports/**'
+      - 'codex/inbox/**'
+      - 'codex/outbox/**'
+      - 'codex/state/**'
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: self-hosted
-    defaults:
-      run:
-        shell: bash
+    defaults: { run: { shell: bash } }
     steps:
       - uses: actions/checkout@v4
 
+      # Читаем пути из config/build-config_Version2.json (без jq/pwsh)
       - name: Read config
+        id: cfg
         run: |
           RAW=$(tr -d '\r' < config/build-config_Version2.json)
-          get() { printf '%s' "$RAW" | grep -Po "\"$1\"\\s*:\\s*\"\\K.*?(?=\")"; }
-          echo "EDITOR_PATH=$(get MetaEditorPath | sed 's#\\\\\\\\#/#g')" >> $GITHUB_ENV
-          echo "EA_FILE=$(get EAPath | sed 's#\\\\\\\\#/#g')" >> $GITHUB_ENV
+          get(){ echo "$RAW" | sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p"; }
+          EP="$(get MetaEditorPath)"
+          EAP="$(get EAPath)"
+          echo "EDITOR_UNIX=$(cygpath -u "$EP")" >> $GITHUB_ENV
+          echo "EA_UNIX=$(cygpath -u "$EAP")"       >> $GITHUB_ENV
 
-      - name: Compile Expert Advisor
+      # Сборка через MetaEditor, генерация логов и «таска» для Codex при падении
+      - name: Compile via MetaEditor (build + logs + codex task)
+        id: build
+        continue-on-error: true
         run: |
-          mkdir -p reports
-          LOG="reports/build_$(date +%Y%m%d_%H%M%S).log"
-          EDITOR_WIN=$(cygpath -w "$EDITOR_PATH")
-          EA_WIN=$(cygpath -w "$EA_FILE")
+          mkdir -p reports codex/inbox codex/outbox codex/state
+          TS="$(date +%Y%m%d_%H%M%S)"
+          LOG="reports/MetaEditor_${TS}.log"
+          EDITOR_WIN=$(cygpath -w "$EDITOR_UNIX")
+          EA_WIN=$(cygpath -w "$EA_UNIX")
           LOG_WIN=$(cygpath -w "$LOG")
 
-          echo ">> Компиляция $EA_WIN" | tee -a "$LOG"
-          "$EDITOR_WIN" /compile:"$EA_WIN" /log:"$LOG_WIN" || true
-          echo "RC=$?" > reports/build_rc.txt
+          echo ">> EDITOR: $EDITOR_WIN"
+          echo ">> TARGET: $EA_WIN"
+          "$EDITOR_WIN" /compile:"$EA_WIN" /log:"$LOG_WIN"
+          RC=$?
+          echo "RC=$RC" | tee reports/build_rc.txt
 
-      - name: Autopush results
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          # Свежий статус
+          {
+            echo "{"
+            echo "  \"ts\": \"$(date -Is)\","
+            echo "  \"sha\": \"${GITHUB_SHA}\","
+            echo "  \"ea\": \"${EA_WIN}\","
+            echo "  \"rc\": ${RC}"
+            echo "}"
+          } > codex/state/last_build.json
+
+          # Если упало — положим понятную задачу для Codex в codex/inbox/*
+          if [ $RC -ne 0 ]; then
+            TASK="codex/inbox/BUILD_FIX_${TS}.md"
+            {
+              echo "# Исправить сборку SuhabEA"
+              echo "- Коммит: ${GITHUB_SHA}"
+              echo "- Цель: ${EA_WIN}"
+              echo "- Правила: смотри ТЗ/промпты в репозитории (папки docs/, config/, tech/ — прочитать всё перед правками)"
+              echo "- Задача: исправить ошибки компиляции до RC=0, затем продолжить реализацию по нашим промптам (русский UI и т.д.)"
+              echo ""
+              echo "## Хвост MetaEditor.log"
+              echo '
+              tail -n 200 "$LOG" || true
+              echo '
+'
+            } > "$TASK"
+          else
+            # На успех: отметить успех и перенести старые незакрытые задачи в outbox
+            echo "OK $(date -Is)" > codex/state/BUILD_OK.codex
+            find codex/inbox -maxdepth 1 -type f -name 'BUILD_FIX_*.md' -print0 | xargs -0 -I{} bash -c 'mv "{}" "codex/outbox/$(basename "{}" .md)_done.md"' || true
+          fi
+
+          # На экран — хвост лога
+          tail -n 200 "$LOG" || true
+
+      # Прикрепляем артефакты к прогону
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metaeditor-artifacts
+          path: |
+            reports/MetaEditor_*.log
+            reports/build_rc.txt
+            codex/state/last_build.json
+            codex/state/*.codex
+            codex/inbox/*.md
+            codex/outbox/*.md# Жёсткий автопуш через GH_TOKEN (без fallback'ов)
+      - name: Autopush results (logs + codex tasks)  # AEGIS_AUTO_PUSH_MARKER
+        if: always()
+        env: { GH_TOKEN: ${{ secrets.GH_TOKEN }} }
         run: |
           git config user.name  "aegis-bot"
           git config user.email "aegis-bot@users.noreply.github.com"
           git add -A
           if git diff --cached --quiet; then
-            echo "No changes to push"
-            exit 0
+            echo "No changes to push"; exit 0
           fi
-          git commit -m "ci: build logs + autopush"
+          # В сообщении отражаем результат сборки
+          RC=$(sed 's/RC=//' reports/build_rc.txt 2>/dev/null || echo 1)
+          if [ "${RC:-1}" -eq 0 ]; then
+            MSG="ci: build OK (+logs, codex/state)"
+          else
+            MSG="ci: build FAIL (RC=${RC}) (+logs, codex/inbox task)"
+          fi
+          git commit -m "$MSG"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${GITHUB_REF_NAME}"
