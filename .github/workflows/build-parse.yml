@@ -1,3 +1,5 @@
+permissions:
+  contents: write
 name: Build Log Parse
 
 on:
@@ -7,24 +9,6 @@ jobs:
   parse:
     runs-on: ubuntu-latest
     steps:
-      - name: Push changes back to repo  # AEGIS_AUTO_PUSH_MARKER
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          git config user.name "aegis-bot"
-          git config user.email "aegis-bot@users.noreply.github.com"
-          git remote set-url origin https://${GH_TOKEN}@github.com/suhodolov333-stack/AegisAutopilot.git
-          git fetch --all
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No changes to push"
-          else
-            git commit -m "ci: auto-push from runner"
-            # Пушим обратно в текущую ветку
-            git push origin HEAD:${GITHUB_REF#refs/heads/}
-          fi
-      - uses: actions/checkout@v4
       - name: Parse build.log
         run: |
           python3 scripts/parse_build_log.py
@@ -34,3 +18,24 @@ jobs:
           name: build-report
           path: reports/build_report_latest.md
 
+
+# --- Автопуш результата из runner'а (после всех шагов) ---
+# AEGIS_AUTO_PUSH_MARKER
+${INDENT}- name: Auto push back to repo
+${INDENT}  if: always()
+${INDENT}  env:
+${INDENT}    GH_TOKEN: ${{ secrets.GH_TOKEN }}
+${INDENT}  run: |
+${INDENT}    git config user.name "aegis-bot"
+${INDENT}    git config user.email "aegis-bot@users.noreply.github.com"
+${INDENT}    # Уберём extraheader от actions/checkout, чтобы не мешал нашему токену
+${INDENT}    git config --global --unset-all http.https://github.com/.extraheader || true
+${INDENT}    git remote set-url origin https://${GH_TOKEN}@github.com/suhodolov333-stack/AegisAutopilot.git
+${INDENT}    git fetch --all
+${INDENT}    git add -A
+${INDENT}    if git diff --cached --quiet; then
+${INDENT}      echo "No changes to push"
+${INDENT}    else
+${INDENT}      git commit -m "ci: auto-push from runner"
+${INDENT}      git push origin HEAD:${GITHUB_REF#refs/heads/}
+${INDENT}    fi
