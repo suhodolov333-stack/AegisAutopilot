@@ -1,0 +1,28 @@
+name: CI MetaEditor Build (bash only)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read config
+        shell: bash
+        run: |
+          CONFIG="config/build-config_Version2.json"
+          META=$(jq -r '.MetaEditorPath' "$CONFIG")
+          EA=$(jq -r '.EAPath' "$CONFIG")
+          OUT="reports"
+          LOG="$OUT/MetaEditor_build.log"
+
+          mkdir -p "$OUT"
+          if [ ! -f "$META" ]; then echo "[FATAL] MetaEditor not found: $META" && exit 2; fi
+          if [ ! -f "$EA" ]; then echo "[FATAL] EA file not found: $EA" && exit 3; fi
+
+          "$META" /compile:"$EA" /log:"$LOG" || true
+          tail -n 100 "$LOG" || true
