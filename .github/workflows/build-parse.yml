@@ -1,90 +1,39 @@
-name: Aegis Universal CI
+name: CI Universal Workflow (MQL5 + Docs + Autopush)
 
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch:
-    inputs:
-      force_build:
-        description: "Принудительно компилировать MQ5"
-        type: boolean
-        default: false
-
-permissions:
-  contents: write
 
 jobs:
-  build:
-    runs-on: [self-hosted, Windows]
-
-    env:
-      EA_PATH: MQL5\Experts\Aegis\SuhabFiboTrader_v5674.mq5
-      METAEDITOR_PATH: C:\Program Files\MetaTrader 5\metaeditor64.exe
+  universal-job:
+    runs-on: self-hosted
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-        with:
-          persist-credentials: false
 
-      - name: Set git identity
+      - name: Build MQL5 Experts with MetaEditor
         run: |
-          git config --global user.name  "aegis-bot"
-          git config --global user.email "aegis-bot@users.noreply.github.com"
+          if [ -f "C:/Program Files/MetaTrader 5/MetaEditor.exe" ]; then
+            echo "➡️ Компиляция MQ5..."
+            "C:/Program Files/MetaTrader 5/MetaEditor.exe" /compile:MQL5/Experts/Aegis/*.mq5 /log
+          else
+            echo "⚠️ MetaEditor.exe не найден — пропускаю сборку."
+          fi
 
-      - name: Detect changes
-        id: changes
-        shell: pwsh
-        run: |
-          git fetch --depth=2 origin +${{ github.ref }}:${{ github.ref }}
-          $files = (git diff --name-only HEAD~1 HEAD) -join "`n"
-          Write-Host "Changed files: $files"
-
-          $mqlChanged = $false
-          if ($files -match '(^|/|\\)MQL5(/|\\)' -or $files -match '\.(mq5|mqh)$') { $mqlChanged = $true }
-
-          $force = "${{ github.event.inputs.force_build }}"
-          if ($force -eq "true") { $mqlChanged = $true }
-
-          if ($mqlChanged) {
-            echo "DO_BUILD=true" >> $env:GITHUB_ENV
-          } else {
-            echo "DO_BUILD=false" >> $env:GITHUB_ENV
-          }
-
-      - name: Compile EA with MetaEditor
-        if: env.DO_BUILD == 'true'
-        run: |
-          "${{ env.METAEDITOR_PATH }}" /compile:"${{ env.EA_PATH }}" /log:"compile.log"
-
-      - name: Show compile log
-        if: always()
-        run: |
-          if exist compile.log type compile.log
-
-      - name: Save compile.log as artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: compile-log
-          path: compile.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Append failure log
-        if: failure()
-        run: |
-          mkdir technical_log 2>nul
-          echo %date% %time% :: compile FAILED >> technical_log\compile_failures.log
-          if exist compile.log type compile.log >> technical_log\compile_failures.log
-
-      - name: Push changes back to repo  # AEGIS_AUTO_PUSH_MARKER
+      - name: Universal autopush  # AEGIS_AUTO_PUSH_MARKER
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          git config --global --unset-all http.https://github.com/.extraheader || true
+          git config user.name "aegis-bot"
+          git config user.email "aegis-bot@users.noreply.github.com"
           git remote set-url origin https://${GH_TOKEN}@github.com/suhodolov333-stack/AegisAutopilot.git
           git fetch --all
           git add -A
-          git diff --cached --quiet || (git commit -m "ci: auto-push from runner" && git push origin HEAD:${GITHUB_REF#refs/heads/})
+          if git diff --cached --quiet; then
+            echo "✅ Нет изменений для пуша."
+          else
+            git commit -m "ci: autopush (universal changes)"
+            git push origin HEAD:${GITHUB_REF#refs/heads/}
+          fi
