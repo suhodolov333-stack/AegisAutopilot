@@ -1,0 +1,112 @@
+name: Aegis 00 — Minimal Compile Loop
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+concurrency:
+  group: aegis-miniloop
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    runs-on: self-hosted
+    timeout-minutes: 20
+    env:
+      # ПРИЯМО ЗДЕСЬ — БЕЗ .env
+      METAEDITOR: C:\Program Files\MetaTrader 5\metaeditor64.exe
+      EA_TERM: C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\SuhabFiboTrade\SuhabFiboTrader_v5674.mq5
+      EA_NAME: SuhabFiboTrader_v5674
+
+      LOG: ${{ github.workspace }}\codex\build\compile.log
+      ERRLOG: ${{ github.workspace }}\codex\history\errors.log
+      OUT_DIR: ${{ github.workspace }}\config\backup
+      MAX_ITERS: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: ::group::Sanity check (paths)
+        shell: cmd
+        run: |
+          echo METAEDITOR=%METAEDITOR%
+          echo EA_TERM=%EA_TERM%
+          if not exist "%METAEDITOR%" ( echo [ERROR] MetaEditor not found & exit /b 2 )
+          if not exist "%EA_TERM%"    ( echo [ERROR] EA file not found & exit /b 3 )
+          if not exist "%OUT_DIR%"    mkdir "%OUT_DIR%"
+          if not exist "%GITHUB_WORKSPACE%\codex\build"   mkdir "%GITHUB_WORKSPACE%\codex\build"
+          if not exist "%GITHUB_WORKSPACE%\codex\history" mkdir "%GITHUB_WORKSPACE%\codex\history"
+          if not exist "%GITHUB_WORKSPACE%\codex\inbox"   mkdir "%GITHUB_WORKSPACE%\codex\inbox"
+          echo ::endgroup::
+
+      - name: ::group::Minimal compile loop
+        shell: cmd
+        run: |
+          setlocal EnableExtensions EnableDelayedExpansion
+          set OK=0
+          for /L %%I in (1,1,%MAX_ITERS%) do (
+            echo ::group::Attempt %%I
+            if exist "%LOG%" del /f /q "%LOG%" >nul 2>nul
+            "%METAEDITOR%" /compile:"%EA_TERM%" /log:"%LOG%"
+            set RC=!ERRORLEVEL!
+            echo ExitCode=!RC!
+            set "EX5=%EA_TERM:.mq5=.ex5%"
+            if exist "!EX5!" (
+              copy /Y "!EX5!" "%OUT_DIR%\%EA_NAME%.ex5" >nul
+              echo SUCCESS on attempt %%I
+              set OK=1
+              echo ::endgroup::
+              goto :done
+            ) else (
+              echo FAILED attempt %%I (rc=!RC!)
+              if exist "%LOG%" (
+                echo ---- LOG TAIL ----
+                for /f "usebackq delims=" %%L in (`powershell -NoProfile -Command "Get-Content -Path '%LOG%' -Tail 50"`) do @echo %%L
+                type "%LOG%" >> "%ERRLOG%"
+              ) else (
+                echo [WARN] No log file written
+              )
+              echo ::endgroup::
+              timeout /t 2 >nul
+            )
+          )
+          :done
+          if not "%OK%"=="1" (
+            > "%GITHUB_WORKSPACE%\codex\inbox\LOOP_BREAK_minimal.txt" (
+              echo Minimal loop failed after %MAX_ITERS% attempts
+              if exist "%LOG%" ( echo ---- LOG (tail 200) ---- & powershell -NoProfile -Command "Get-Content -Path '%LOG%' -Tail 200" )
+            )
+            exit /b 1
+          ) else (
+            exit /b 0
+          )
+
+      - name: Upload artifacts (logs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: miniloop-logs
+          path: |
+            codex/build/*
+            codex/history/*
+            codex/inbox/*
+
+      - name: Autopush (results/tickets)
+        if: always()
+        shell: cmd
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name  "suhodolov333-stack"
+          git config user.email "suhodolov333-stack@users.noreply.github.com"
+          if not "%GH_TOKEN%"=="" (
+            git remote set-url origin https://x-access-token:%GH_TOKEN%@github.com/${{ github.repository }}.git
+          ) else if not "%GITHUB_TOKEN%"=="" (
+            git remote set-url origin https://x-access-token:%GITHUB_TOKEN%@github.com/${{ github.repository }}.git
+          )
+          git add -A
+          git diff --cached --quiet && echo "No changes" || git commit -m "ci(miniloop): %EA_NAME% => ${{ job.status }}"
+          git push origin "HEAD:${{ github.ref_name }}"
