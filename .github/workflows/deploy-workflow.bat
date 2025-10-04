@@ -4,29 +4,34 @@ setlocal
 REM Переход в папку проекта
 cd /d "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis"
 
-REM Проверяем, существует ли файл шаблона
+REM Убедимся, что нужный файл шаблона существует
 if not exist "%~dp0aegis-min.yml" (
-    echo ❌ Файл aegis-min.yml не найден рядом с батником. Отмена операций.
+    echo ❌ Файл aegis-min.yml не найден рядом с .bat. Операция отменена.
     pause
     exit /b
 )
 
-REM Удаляем старые workflow-файлы
-if exist ".github\workflows" (
-    del /q .github\workflows\*.yml
-    del /q .github\workflows\*.yaml
-) else (
+REM Убедимся, что папка существует
+if not exist ".github\workflows" (
     mkdir .github\workflows
 )
 
-REM Копируем новый workflow
-copy "%~dp0aegis-min.yml" ".github\workflows\aegis-min.yml" > nul
+REM Удаляем все YML/YAML кроме aegis-min.yml
+for %%f in (.github\workflows\*.yml) do (
+    if /I not "%%~nxf"=="aegis-min.yml" del "%%f"
+)
+for %%f in (.github\workflows\*.yaml) do (
+    if /I not "%%~nxf"=="aegis-min.yml" del "%%f"
+)
 
-REM Добавляем в git, коммитим и пушим
+REM Копируем файл (перезапись, если надо)
+copy /Y "%~dp0aegis-min.yml" ".github\workflows\aegis-min.yml" > nul
+
+REM Git push
 git add -A
-git commit -m "ci: обновлён workflow (исправленный .bat)"
+git commit -m "ci: безопасное обновление workflow (не трогаем aegis-min.yml)"
 git push origin main
 
 echo.
-echo ✅ Готово! Workflow отправлен. Проверь вкладку Actions на GitHub.
+echo ✅ Готово! Проверяй GitHub → вкладка Actions.
 pause
