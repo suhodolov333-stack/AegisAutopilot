@@ -5,7 +5,7 @@ on:
     branches: [ main ]
   workflow_dispatch: {}
 
-# ЖЁСТКИЕ пути, без значений по умолчанию:
+# Жесткие пути, без дефолтов
 env:
   METAEDITOR: C:\Program Files\MetaTrader 5\metaeditor64.exe
   EA_TERM: C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\SuhabFiboTrader_v5674.mq5
@@ -21,17 +21,17 @@ jobs:
         uses: actions/checkout@v4
         with: { fetch-depth: 0 }
 
-      - name: Sanity
-        shell: pwsh
+      - name: Sanity (paths)
+        shell: powershell
         run: |
           Write-Host "METAEDITOR: $env:METAEDITOR"
           Write-Host "EA_TERM   : $env:EA_TERM"
           if (-not (Test-Path $env:METAEDITOR)) { Write-Error "MetaEditor not found"; exit 11 }
-          if (-not (Test-Path $env:EA_TERM))    { Write-Error "EA file not found"; exit 12 }
+          if (-not (Test-Path $env:EA_TERM))    { Write-Error "EA file not found";   exit 12 }
           New-Item -ItemType Directory -Force -Path "codex" | Out-Null
 
       - name: Minimal compile loop (x3)
-        shell: pwsh
+        shell: powershell
         run: |
           $ex5 = [IO.Path]::ChangeExtension($env:EA_TERM, '.ex5')
           if (Test-Path $env:LOG) { Remove-Item -Force $env:LOG }
@@ -49,7 +49,7 @@ jobs:
               $ok = $true; break
             } else {
               Write-Warning "FAIL (rc=$rc). Log tail:"
-              if (Test-Path $env:LOG) { Get-Content $env:LOG -Tail 60 | ForEach-Object { "::notice ::$_" } }
+              if (Test-Path $env:LOG) { Get-Content $env:LOG -Tail 80 | ForEach-Object { "::notice ::$_" } }
             }
           }
           if (-not $ok) {
