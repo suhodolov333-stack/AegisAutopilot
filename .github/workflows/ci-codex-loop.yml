@@ -1,4 +1,4 @@
-name: CI MetaEditor Build + Codex Smart Loop (No JSON, CMD Shell)
+name: CI MetaEditor Build + Codex Smart Loop
 
 on:
   push:
@@ -18,23 +18,21 @@ jobs:
         shell: cmd
         run: |
           "C:\Program Files\MetaTrader 5\metaeditor64.exe" ^
-            /compile:"C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\Aegis_S.mq5" ^
+            /compile:"C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\SuhabFiboTrade\SuhabFiboTrader_v5674.mq5" ^
             /log
-          echo "=== Содержимое папки после компиляции ==="
-          dir "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis"
+          echo "=== Проверка содержимого каталога после компиляции ==="
+          dir "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\SuhabFiboTrade"
 
       - name: Backup EX5
-        if: success()
         shell: cmd
         run: |
           mkdir "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\config\backup" >nul 2>&1
-          copy /Y "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\Aegis_S.ex5" "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\config\backup\Aegis_S.ex5" || echo "❌ EX5 не найден, копирование пропущено"
+          copy /Y "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\SuhabFiboTrade\SuhabFiboTrader_v5674.ex5" "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\config\backup\SuhabFiboTrader_v5674.ex5" || echo "❌ EX5 не найден, копирование пропущено"
 
       - name: Autopush (results & tickets)
-        shell: bash
         run: |
           git config user.name "suhodolov333-stack"
           git config user.email "suhodolov333@gmail.com"
           git add .
-          git commit -m "ci: autopush build results" || echo "No changes to commit"
-          git push origin main || echo "Nothing to push"
+          git commit -m "ci: autopush build artifacts" || echo "No changes to commit"
+          git push origin main
