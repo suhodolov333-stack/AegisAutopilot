@@ -1,12 +1,9 @@
-name: CI MetaEditor Build + Codex Smart Organism (Config-driven)
+name: CI MetaEditor Build + Codex Smart Loop
 
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   build:
@@ -17,122 +14,98 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Read config (build-config_Version2.json)
+      - name: Read build-config_Version2.json
         id: cfg
         shell: pwsh
         run: |
           $cfgPath = "MQL5/Experts/Aegis/config/build-config_Version2.json"
           if (-not (Test-Path $cfgPath)) { Write-Error "Config not found: $cfgPath"; exit 1 }
           $cfg = Get-Content -Raw $cfgPath | ConvertFrom-Json
-          "repo=$($cfg.RepoPath)"       | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
           "meta=$($cfg.MetaEditorPath)" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
-          "ea=$($cfg.EAPath)"           | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
-          "bak=$($cfg.BackupDir)"       | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          "ea=$($cfg.EAPath)"          | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          "repo=$($cfg.RepoPath)"      | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          "bak=$($cfg.BackupDir)"      | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
 
-      - name: Compile Expert Advisor
+      - name: Prepare paths
+        id: p
+        shell: pwsh
+        run: |
+          $repo = "${{ steps.cfg.outputs.repo }}"
+          $bak  = "${{ steps.cfg.outputs.bak }}"
+          New-Item -ItemType Directory -Force -Path $repo | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $repo 'logs') | Out-Null
+          New-Item -ItemType Directory -Force -Path $bak | Out-Null
+          $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+          $log   = Join-Path $repo "logs\MetaEditor_$stamp.log"
+          $ex5   = [System.IO.Path]::ChangeExtension("${{ steps.cfg.outputs.ea }}",".ex5")
+          "log=$log" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          "ex5=$ex5" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+
+      - name: Compile Expert Advisor (MetaEditor)
         id: build
         shell: pwsh
         run: |
           $meta = "${{ steps.cfg.outputs.meta }}"
           $ea   = "${{ steps.cfg.outputs.ea }}"
-          $log  = "compile.log"
+          $log  = "${{ steps.p.outputs.log }}"
           if (-not (Test-Path $meta)) { Write-Error "MetaEditor not found: $meta"; exit 2 }
           & "$meta" "/compile:$ea" "/log:$log"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Backup EX5 on success
+      - name: Backup EX5
         if: success()
         shell: pwsh
         run: |
-          $ea  = "${{ steps.cfg.outputs.ea }}"
-          $bak = "${{ steps.cfg.outputs.bak }}"
-          $ex5 = [System.IO.Path]::ChangeExtension($ea,".ex5")
-          New-Item -ItemType Directory -Force -Path $bak | Out-Null
-          Copy-Item -Force $ex5 "$bak\"
+          Copy-Item -Force "${{ steps.p.outputs.ex5 }}" "${{ steps.cfg.outputs.bak }}\"
 
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: metaeditor-logs
-          path: compile.log
+          path: ${{ steps.p.outputs.log }}
 
-      - name: Handle error with Codex (ticket + cumulative log + loop guard)
+      - name: Create Codex ticket & append log to .mq5 (on failure)
         if: failure()
-        id: codex_trigger
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path "codex/inbox","codex/history","codex/state" | Out-Null
-
-          $ticket = "codex/inbox/ERR_{0}.md" -f (Get-Date -Format "yyyyMMdd_HHmmss")
+          $ea = "${{ steps.cfg.outputs.ea }}"
+          $log = "${{ steps.p.outputs.log }}"
+          New-Item -ItemType Directory -Force -Path "codex/inbox" | Out-Null
+          $ticket = "codex/inbox/BUILD_FIX_{0}.md" -f (Get-Date -Format "yyyyMMdd_HHmmss")
           "# Build failed" | Out-File -Encoding utf8 $ticket
-          Get-Content compile.log -Tail 100 | Out-File -Encoding utf8 -Append $ticket
+          "**EA:** $ea`n" | Out-File -Encoding utf8 -Append $ticket
+          "**Log tail (200):**`n" | Out-File -Encoding utf8 -Append $ticket
+          Get-Content $log -Tail 200 | Out-File -Encoding utf8 -Append $ticket
+          Add-Content -Path $ea -Value "`r`n// ==== BUILD ERROR $(Get-Date -Format o) ===="
+          Get-Content $log | ForEach-Object { Add-Content -Path $ea -Value ("// " + $_) }
 
-          $diff = (git diff --unified=0 HEAD^..HEAD -- . 2>$null | Out-String)
-          if (-not $diff) { $diff = (git show --format=fuller HEAD 2>$null | Out-String) }
-          $bytes = [System.Text.Encoding]::UTF8.GetBytes($diff)
-          $sha   = [System.Security.Cryptography.SHA256]::Create()
-          $patchHash = ($sha.ComputeHash($bytes) | ForEach-Object { $_.ToString("x2") }) -join ''
+      - name: Upload Codex inbox
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-inbox
+          path: codex/inbox/*
+          if-no-files-found: ignore
 
-          $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-          Add-Content codex/history/errors.log "[$stamp] Commit $env:GITHUB_SHA"
-          Add-Content codex/history/errors.log "Patch-Hash: $patchHash"
-          Add-Content codex/history/errors.log (Get-Content compile.log -Tail 50)
-          Add-Content codex/history/errors.log "-----------------------------"
-
-          $limit = 3
-          $last = (Get-Content codex/history/errors.log | Select-String -Pattern "error" | Select-Object -Last $limit)
-          if ($last.Count -eq $limit -and ($last | Get-Unique).Count -eq 1) {
-            $review = "codex/inbox/REQUIRES_MANUAL_REVIEW_{0}.md" -f (Get-Date -Format "yyyyMMdd_HHmmss")
-            "# Зацикливание" | Out-File -Encoding utf8 $review
-            "Одна и та же ошибка повторилась $limit раз подряд. Требуется иной подход." | Out-File -Encoding utf8 -Append $review
-
-            $rewrite = "codex/inbox/ANALYZE_AND_REWRITE_{0}.md" -f (Get-Date -Format "yyyyMMdd_HHmmss")
-            "# Перепиши блок" | Out-File -Encoding utf8 $rewrite
-            "Проанализируй codex/history/errors.log и перепиши больший объём кода, не повторяя прошлые правки (по Patch-Hash)." | Out-File -Encoding utf8 -Append $rewrite
-
-            Add-Content codex/state/BLOCKED.codex "STOPPED $(Get-Date -Format o)"
-          }
-
-          "trigger-codex=1" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
-
-      - name: Mark success + NEXT_STEP
-        if: success()
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path "codex/state","codex/inbox" | Out-Null
-          "OK $(Get-Date -Format o)" | Out-File -Encoding utf8 codex/state/BUILD_OK.codex
-          "NEXT_STEP $(Get-Date -Format o)" | Out-File -Encoding utf8 codex/state/NEXT_TASK.codex
-          $ticket = "codex/inbox/START_SUBTASK_{0}.md" -f (Get-Date -Format "yyyyMMdd_HHmmss")
-          "# Build OK — переход к следующей подзадаче" | Out-File -Encoding utf8 $ticket
-          "**Сообщение для Codex:** Сборка успешна. Приступай к следующему шагу из промта дня." | Out-File -Encoding utf8 -Append $ticket
-
-      - name: Autopush (commit results with token)
+      - name: Autopush (results & tickets)
         if: always()
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name  "suhodolov333-stack"
           git config user.email "suhodolov333-stack@users.noreply.github.com"
-          $tok = if ($env:GH_TOKEN -and $env:GH_TOKEN -ne "") { $env:GH_TOKEN } else { $env:GITHUB_TOKEN }
-          if ($tok -ne "") {
-            git remote set-url origin "https://x-access-token:$tok@github.com/${{ github.repository }}.git"
+          if ("$env:GH_TOKEN" -ne "") {
+            $remote = "https://x-access-token:$env:GH_TOKEN@github.com/${{ github.repository }}.git"
+            git remote set-url origin $remote
+          }
+          if ("${{ job.status }}" -eq "success") {
+            New-Item -ItemType Directory -Force -Path "codex/state" | Out-Null
+            "OK $(Get-Date -Format o)" | Out-File -Encoding utf8 -Append "codex/state/BUILD_OK.codex"
           }
           git add -A
           if (git diff --cached --quiet) { Write-Host "No changes to push"; exit 0 }
-          git commit -m "ci: build ${{ job.status }}"
+          $msg = ("ci: {0} (+logs{1})" -f ("${{ job.status }}"), $(if ("${{ job.status }}" -eq "failure") { ",+codex" } else { "" }))
+          git commit -m $msg
           git push origin "HEAD:${{ github.ref_name }}"
-
-  codex-loop:
-    needs: build
-    if: ${{ needs.build.outputs.trigger-codex == '1' }}
-    runs-on: self-hosted
-    steps:
-      - name: Wait Codex Fix
-        shell: bash
-        run: |
-          echo "Ждём, пока Codex поправит код и запушит обратно…"
-          echo "Как только появится коммит, цикл перезапустится."
-YAML
