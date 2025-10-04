@@ -1,4 +1,4 @@
-name: CI MetaEditor Build + Codex Smart Loop
+name: CI MetaEditor Build + Codex Smart Loop (No JSON)
 
 on:
   push:
@@ -14,40 +14,20 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Read build-config_Version2.json
-        shell: pwsh
-        run: |
-          $cfgPath = "${{ github.workspace }}/MQL5/Experts/Aegis/config/build-config_Version2.json"
-          Write-Output "Using config file: $cfgPath"
-          if (!(Test-Path $cfgPath)) {
-            Write-Error "Config file not found: $cfgPath"
-            exit 1
-          }
-          Get-Content $cfgPath | Out-File build-config.log -Encoding utf8
-
       - name: Compile Expert Advisor (MetaEditor)
-        shell: pwsh
         run: |
-          $cfgPath = "${{ github.workspace }}/MQL5/Experts/Aegis/config/build-config_Version2.json"
-          $config = Get-Content $cfgPath | ConvertFrom-Json
-          & "$($config.MetaEditorPath)" /compile:"$($config.EAPath)" /log
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Compilation failed"
-            exit 1
-          }
+          "C:/Program Files/MetaTrader 5/metaeditor64.exe" 
+            /compile:"C:/Users/Administrator/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075/MQL5/Experts/Aegis/Aegis_S.mq5" 
+            /log
+        shell: pwsh
 
       - name: Backup EX5
         if: success()
-        shell: pwsh
         run: |
-          $cfgPath = "${{ github.workspace }}/MQL5/Experts/Aegis/config/build-config_Version2.json"
-          $config = Get-Content $cfgPath | ConvertFrom-Json
-          $backupDir = $config.BackupDir
-          if (!(Test-Path $backupDir)) {
-            New-Item -ItemType Directory -Path $backupDir | Out-Null
-          }
-          Copy-Item "$($config.EAPath -replace '.mq5$', '.ex5')" $backupDir -Force
-          Write-Output "EX5 backup saved to $backupDir"
+          mkdir -Force "C:/Users/Administrator/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075/MQL5/Experts/Aegis/config/backup"
+          cp "C:/Users/Administrator/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075/MQL5/Experts/Aegis/Aegis_S.ex5" `
+             "C:/Users/Administrator/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075/MQL5/Experts/Aegis/config/backup/Aegis_S.ex5" -Force
+        shell: pwsh
 
       - name: Autopush (results & tickets)
         run: |
@@ -56,3 +36,4 @@ jobs:
           git add .
           git commit -m "ci: autopush build results" || echo "No changes to commit"
           git push origin main || echo "Nothing to push"
+        shell: bash
