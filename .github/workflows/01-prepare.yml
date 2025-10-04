@@ -24,8 +24,10 @@ jobs:
       - name: Load .env variables
         shell: cmd
         run: |
-          if not exist "%ENVFILE%" ( echo [ERROR] ENVFILE not found: %ENVFILE% & exit /b 10 )
-          (echo # Loaded from %ENVFILE%) > %GITHUB_ENV%
+          if not exist "%ENVFILE%" (
+            echo [ERROR] ENVFILE not found: %ENVFILE%
+            exit /b 10
+          )
           for /f "usebackq tokens=1,* delims==" %%A in ("%ENVFILE%") do (
             set "k=%%A"
             set "v=%%B"
@@ -37,8 +39,6 @@ jobs:
       - name: ::group::Print loaded ENV
         shell: cmd
         run: |
-          echo ====== Content of GITHUB_ENV ======
-          type %GITHUB_ENV%
           echo ====== Effective vars ======
           echo METAEDITOR=%METAEDITOR%
           echo TERMINAL_DIR=%TERMINAL_DIR%
@@ -50,9 +50,15 @@ jobs:
       - name: ::group::Ensure folders and sync
         shell: cmd
         run: |
-          if "%MQL5_DIR%"=="" ( echo [ERROR] MQL5_DIR is empty! & exit /b 11 )
+          if "%MQL5_DIR%"=="" (
+            echo [ERROR] MQL5_DIR is empty!
+            exit /b 11
+          )
           if not exist "%MQL5_DIR%\Experts\Aegis\SuhabFiboTrade" mkdir "%MQL5_DIR%\Experts\Aegis\SuhabFiboTrade"
           robocopy "%GITHUB_WORKSPACE%\MQL5" "%MQL5_DIR%" /E /MT:8 /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
           set RC=%ERRORLEVEL%
-          if %RC% GEQ 8 ( echo Robocopy failed with %RC% & exit /b %RC% )
+          if %RC% GEQ 8 (
+            echo Robocopy failed with %RC%
+            exit /b %RC%
+          )
           echo ::endgroup::
