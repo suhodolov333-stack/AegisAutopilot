@@ -1,0 +1,53 @@
+name: Aegis 01 — Prepare & Sync
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: aegis-main
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: self-hosted
+    timeout-minutes: 20
+    env:
+      ENVFILE: config\build-config_Version2.env
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Load .env variables
+        shell: cmd
+        run: |
+          if not exist "%ENVFILE%" ( echo [ERROR] ENVFILE not found: %ENVFILE% & exit /b 10 )
+          for /f "usebackq tokens=1,* delims==" %%A in ("%ENVFILE%") do (
+            set "k=%%A"
+            set "v=%%B"
+            if not "!k!"=="" if not "!k:~0,1!"=="#" if not "!k:~0,1!"==";" (
+              echo !k!=!v!>> %GITHUB_ENV%
+            )
+          )
+
+      - name: ::group::Print key paths
+        shell: cmd
+        run: |
+          echo METAEDITOR=%METAEDITOR%
+          echo TERMINAL_DIR=%TERMINAL_DIR%
+          echo MQL5_DIR=%MQL5_DIR%
+          echo EA_TERM=%EA_TERM%
+          echo OUT_DIR=%OUT_DIR%
+          echo ::endgroup::
+
+      - name: ::group::Ensure folders and sync
+        shell: cmd
+        run: |
+          if not exist "%MQL5_DIR%\Experts\Aegis\SuhabFiboTrade" mkdir "%MQL5_DIR%\Experts\Aegis\SuhabFiboTrade"
+          robocopy "%GITHUB_WORKSPACE%\MQL5" "%MQL5_DIR%" /E /MT:8 /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
+          set RC=%ERRORLEVEL%
+          if %RC% GEQ 8 ( echo Robocopy failed with %RC% & exit /b %RC% )
+          echo ::endgroup::
