@@ -1,0 +1,62 @@
+name: Aegis — Minimal Runner Compile Check
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+# ЖЁСТКИЕ пути, без значений по умолчанию:
+env:
+  METAEDITOR: C:\Program Files\MetaTrader 5\metaeditor64.exe
+  EA_TERM: C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\SuhabFiboTrader_v5674.mq5
+  LOG: codex\compile.log
+  MAX_ITERS: 3
+
+jobs:
+  compile:
+    runs-on: self-hosted
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Sanity
+        shell: pwsh
+        run: |
+          Write-Host "METAEDITOR: $env:METAEDITOR"
+          Write-Host "EA_TERM   : $env:EA_TERM"
+          if (-not (Test-Path $env:METAEDITOR)) { Write-Error "MetaEditor not found"; exit 11 }
+          if (-not (Test-Path $env:EA_TERM))    { Write-Error "EA file not found"; exit 12 }
+          New-Item -ItemType Directory -Force -Path "codex" | Out-Null
+
+      - name: Minimal compile loop (x3)
+        shell: pwsh
+        run: |
+          $ex5 = [IO.Path]::ChangeExtension($env:EA_TERM, '.ex5')
+          if (Test-Path $env:LOG) { Remove-Item -Force $env:LOG }
+          if (Test-Path $ex5)     { Remove-Item -Force $ex5 }
+
+          $ok = $false
+          for ($i=1; $i -le [int]$env:MAX_ITERS; $i++) {
+            Write-Host "=== Attempt $i/$env:MAX_ITERS ==="
+            $args = @('/compile:"{0}"' -f $env:EA_TERM, '/log:"{0}"' -f $env:LOG)
+            $p = Start-Process -FilePath $env:METAEDITOR -ArgumentList $args -PassThru -WindowStyle Hidden -Wait
+            $rc = $p.ExitCode
+            $have = Test-Path $ex5
+            if ($have) {
+              Write-Host "OK: ex5 built ($ex5). ExitCode=$rc"
+              $ok = $true; break
+            } else {
+              Write-Warning "FAIL (rc=$rc). Log tail:"
+              if (Test-Path $env:LOG) { Get-Content $env:LOG -Tail 60 | ForEach-Object { "::notice ::$_" } }
+            }
+          }
+          if (-not $ok) {
+            Write-Error "Compilation failed after $env:MAX_ITERS attempts"
+            if (Test-Path $env:LOG) {
+              Write-Host "------ Full log path: $env:LOG"
+              Get-Content $env:LOG -Tail 200
+            }
+            exit 1
+          }
