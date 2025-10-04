@@ -1,0 +1,20 @@
+name: Debug Paths
+
+on:
+  workflow_dispatch:
+
+jobs:
+  list:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Show workspace tree
+        run: |
+          echo "=== Files in workspace ==="
+          ls -R
+          echo "=== Looking for build-config_Version2.json ==="
+          find . -name "build-config_Version2.json" || true
