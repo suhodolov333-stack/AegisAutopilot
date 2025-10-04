@@ -14,24 +14,45 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Find build-config_Version2.json
-        id: cfg
+      - name: Read build-config_Version2.json
         shell: pwsh
         run: |
-          $paths = @(
-            "config/build-config_Version2.json",
-            "MQL5/Experts/Aegis/config/build-config_Version2.json"
-          )
-          $cfgPath = $null
-          foreach ($p in $paths) {
-            if (Test-Path $p) { $cfgPath = $p; break }
+          $cfgPath = "${{ github.workspace }}/MQL5/Experts/Aegis/config/build-config_Version2.json"
+          Write-Output "Using config file: $cfgPath"
+          if (!(Test-Path $cfgPath)) {
+            Write-Error "Config file not found: $cfgPath"
+            exit 1
           }
-          if (-not $cfgPath) { Write-Error "Config not found in any known location"; exit 1 }
-          Write-Host "Using config: $cfgPath"
-          $cfg = Get-Content -Raw $cfgPath | ConvertFrom-Json
-          "meta=$($cfg.MetaEditorPath)" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
-          "ea=$($cfg.EAPath)"          | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
-          "repo=$($cfg.RepoPath)"      | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
-          "bak=$($cfg.BackupDir)"      | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          Get-Content $cfgPath | Out-File build-config.log -Encoding utf8
 
-      # Остальные шаги остаются как в твоём текущем workflow...
+      - name: Compile Expert Advisor (MetaEditor)
+        shell: pwsh
+        run: |
+          $cfgPath = "${{ github.workspace }}/MQL5/Experts/Aegis/config/build-config_Version2.json"
+          $config = Get-Content $cfgPath | ConvertFrom-Json
+          & "$($config.MetaEditorPath)" /compile:"$($config.EAPath)" /log
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Compilation failed"
+            exit 1
+          }
+
+      - name: Backup EX5
+        if: success()
+        shell: pwsh
+        run: |
+          $cfgPath = "${{ github.workspace }}/MQL5/Experts/Aegis/config/build-config_Version2.json"
+          $config = Get-Content $cfgPath | ConvertFrom-Json
+          $backupDir = $config.BackupDir
+          if (!(Test-Path $backupDir)) {
+            New-Item -ItemType Directory -Path $backupDir | Out-Null
+          }
+          Copy-Item "$($config.EAPath -replace '.mq5$', '.ex5')" $backupDir -Force
+          Write-Output "EX5 backup saved to $backupDir"
+
+      - name: Autopush (results & tickets)
+        run: |
+          git config user.name "suhodolov333-stack"
+          git config user.email "suhodolov333@gmail.com"
+          git add .
+          git commit -m "ci: autopush build results" || echo "No changes to commit"
+          git push origin main || echo "Nothing to push"
