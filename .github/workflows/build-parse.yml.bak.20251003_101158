@@ -1,0 +1,22 @@
+name: Build Log Parse
+
+on:
+  push:
+    branches:
+      - "*"
+  workflow_dispatch:
+
+jobs:
+  parse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse build.log
+        run: |
+          python3 scripts/parse_build_log.py
+      - name: Upload report artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-report
+          path: reports/build_report_latest.md
+
