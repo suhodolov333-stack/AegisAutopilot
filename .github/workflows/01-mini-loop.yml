@@ -1,0 +1,50 @@
+name: CI Minimal Compile Loop
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  compile:
+    runs-on: self-hosted
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure folders
+        shell: cmd
+        run: |
+          if not exist "codex\\logs" mkdir codex\\logs
+          if not exist "codex\\out" mkdir codex\\out
+
+      - name: Compile in loop
+        shell: cmd
+        run: |
+          set METAEDITOR="C:\\Program Files\\MetaTrader 5\\metaeditor64.exe"
+          set EA="C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\MQL5\\Experts\\Aegis\\SuhabFiboTrade\\SuhabFiboTrader_v5674.mq5"
+          set LOG="codex\\logs\\compile.log"
+
+          echo ==== Start minimal loop ==== > %LOG%
+          for /L %%I in (1,1,3) do (
+            echo [ITER %%I] Compiling... >> %LOG%
+            %METAEDITOR% /compile:%EA% /log:%LOG%
+            if exist "%~dpnEA%.ex5" (
+              echo Success on iteration %%I >> %LOG%
+              copy "%~dpnEA%.ex5" codex\\out\\ /Y
+              exit /b 0
+            )
+          )
+          echo Failed after 3 attempts >> %LOG%
+          exit /b 1
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compile-logs
+          path: codex/logs/*
