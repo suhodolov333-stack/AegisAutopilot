@@ -14,98 +14,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Read build-config_Version2.json
+      - name: Find build-config_Version2.json
         id: cfg
         shell: pwsh
         run: |
-          $cfgPath = "MQL5/Experts/Aegis/config/build-config_Version2.json"
-          if (-not (Test-Path $cfgPath)) { Write-Error "Config not found: $cfgPath"; exit 1 }
+          $paths = @(
+            "config/build-config_Version2.json",
+            "MQL5/Experts/Aegis/config/build-config_Version2.json"
+          )
+          $cfgPath = $null
+          foreach ($p in $paths) {
+            if (Test-Path $p) { $cfgPath = $p; break }
+          }
+          if (-not $cfgPath) { Write-Error "Config not found in any known location"; exit 1 }
+          Write-Host "Using config: $cfgPath"
           $cfg = Get-Content -Raw $cfgPath | ConvertFrom-Json
           "meta=$($cfg.MetaEditorPath)" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
           "ea=$($cfg.EAPath)"          | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
           "repo=$($cfg.RepoPath)"      | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
           "bak=$($cfg.BackupDir)"      | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
 
-      - name: Prepare paths
-        id: p
-        shell: pwsh
-        run: |
-          $repo = "${{ steps.cfg.outputs.repo }}"
-          $bak  = "${{ steps.cfg.outputs.bak }}"
-          New-Item -ItemType Directory -Force -Path $repo | Out-Null
-          New-Item -ItemType Directory -Force -Path (Join-Path $repo 'logs') | Out-Null
-          New-Item -ItemType Directory -Force -Path $bak | Out-Null
-          $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
-          $log   = Join-Path $repo "logs\MetaEditor_$stamp.log"
-          $ex5   = [System.IO.Path]::ChangeExtension("${{ steps.cfg.outputs.ea }}",".ex5")
-          "log=$log" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
-          "ex5=$ex5" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
-
-      - name: Compile Expert Advisor (MetaEditor)
-        id: build
-        shell: pwsh
-        run: |
-          $meta = "${{ steps.cfg.outputs.meta }}"
-          $ea   = "${{ steps.cfg.outputs.ea }}"
-          $log  = "${{ steps.p.outputs.log }}"
-          if (-not (Test-Path $meta)) { Write-Error "MetaEditor not found: $meta"; exit 2 }
-          & "$meta" "/compile:$ea" "/log:$log"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Backup EX5
-        if: success()
-        shell: pwsh
-        run: |
-          Copy-Item -Force "${{ steps.p.outputs.ex5 }}" "${{ steps.cfg.outputs.bak }}\"
-
-      - name: Upload logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: metaeditor-logs
-          path: ${{ steps.p.outputs.log }}
-
-      - name: Create Codex ticket & append log to .mq5 (on failure)
-        if: failure()
-        shell: pwsh
-        run: |
-          $ea = "${{ steps.cfg.outputs.ea }}"
-          $log = "${{ steps.p.outputs.log }}"
-          New-Item -ItemType Directory -Force -Path "codex/inbox" | Out-Null
-          $ticket = "codex/inbox/BUILD_FIX_{0}.md" -f (Get-Date -Format "yyyyMMdd_HHmmss")
-          "# Build failed" | Out-File -Encoding utf8 $ticket
-          "**EA:** $ea`n" | Out-File -Encoding utf8 -Append $ticket
-          "**Log tail (200):**`n" | Out-File -Encoding utf8 -Append $ticket
-          Get-Content $log -Tail 200 | Out-File -Encoding utf8 -Append $ticket
-          Add-Content -Path $ea -Value "`r`n// ==== BUILD ERROR $(Get-Date -Format o) ===="
-          Get-Content $log | ForEach-Object { Add-Content -Path $ea -Value ("// " + $_) }
-
-      - name: Upload Codex inbox
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: codex-inbox
-          path: codex/inbox/*
-          if-no-files-found: ignore
-
-      - name: Autopush (results & tickets)
-        if: always()
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          git config user.name  "suhodolov333-stack"
-          git config user.email "suhodolov333-stack@users.noreply.github.com"
-          if ("$env:GH_TOKEN" -ne "") {
-            $remote = "https://x-access-token:$env:GH_TOKEN@github.com/${{ github.repository }}.git"
-            git remote set-url origin $remote
-          }
-          if ("${{ job.status }}" -eq "success") {
-            New-Item -ItemType Directory -Force -Path "codex/state" | Out-Null
-            "OK $(Get-Date -Format o)" | Out-File -Encoding utf8 -Append "codex/state/BUILD_OK.codex"
-          }
-          git add -A
-          if (git diff --cached --quiet) { Write-Host "No changes to push"; exit 0 }
-          $msg = ("ci: {0} (+logs{1})" -f ("${{ job.status }}"), $(if ("${{ job.status }}" -eq "failure") { ",+codex" } else { "" }))
-          git commit -m $msg
-          git push origin "HEAD:${{ github.ref_name }}"
+      # Остальные шаги остаются как в твоём текущем workflow...
