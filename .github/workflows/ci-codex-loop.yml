@@ -1,4 +1,4 @@
-name: CI MetaEditor Build + Codex Smart Loop (No JSON)
+name: CI MetaEditor Build + Codex Smart Loop (No JSON, CMD Shell)
 
 on:
   push:
@@ -15,25 +15,24 @@ jobs:
           fetch-depth: 0
 
       - name: Compile Expert Advisor (MetaEditor)
+        shell: cmd
         run: |
-          "C:/Program Files/MetaTrader 5/metaeditor64.exe" 
-            /compile:"C:/Users/Administrator/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075/MQL5/Experts/Aegis/Aegis_S.mq5" 
+          "C:\Program Files\MetaTrader 5\metaeditor64.exe" ^
+            /compile:"C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\Aegis_S.mq5" ^
             /log
-        shell: pwsh
 
       - name: Backup EX5
         if: success()
+        shell: cmd
         run: |
-          mkdir -Force "C:/Users/Administrator/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075/MQL5/Experts/Aegis/config/backup"
-          cp "C:/Users/Administrator/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075/MQL5/Experts/Aegis/Aegis_S.ex5" `
-             "C:/Users/Administrator/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075/MQL5/Experts/Aegis/config/backup/Aegis_S.ex5" -Force
-        shell: pwsh
+          mkdir "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\config\backup" 2>nul
+          copy /Y "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\Aegis_S.ex5" "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Experts\Aegis\config\backup\Aegis_S.ex5"
 
       - name: Autopush (results & tickets)
+        shell: bash
         run: |
           git config user.name "suhodolov333-stack"
           git config user.email "suhodolov333@gmail.com"
           git add .
           git commit -m "ci: autopush build results" || echo "No changes to commit"
           git push origin main || echo "Nothing to push"
-        shell: bash
