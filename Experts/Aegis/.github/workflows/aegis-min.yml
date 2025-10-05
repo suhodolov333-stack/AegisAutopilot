@@ -1,0 +1,75 @@
+name: Aegis — Minimal Runner (hard paths, 3 attempts)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+env:
+  METAEDITOR: C:\Program Files\MetaTrader 5\metaeditor64.exe
+  TERMINAL_DIR: C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075
+  EA_REL: MQL5\Experts\Aegis\SuhabFiboTrader_v5674.mq5
+  LOG: codex\compile.log
+  MAX_ITERS: 3
+
+jobs:
+  compile:
+    runs-on: self-hosted
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Ensure folders
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path "codex" | Out-Null
+          if (-not (Test-Path $env:TERMINAL_DIR)) { Write-Error "TERMINAL_DIR not found: $env:TERMINAL_DIR"; exit 10 }
+          if (-not (Test-Path (Join-Path $env:TERMINAL_DIR 'MQL5'))) {
+            New-Item -ItemType Directory -Force -Path (Join-Path $env:TERMINAL_DIR 'MQL5') | Out-Null
+          }
+
+      - name: Sync repo MQL5 -> Terminal
+        shell: powershell
+        run: |
+          $src = Join-Path $env:GITHUB_WORKSPACE 'MQL5'
+          $dst = $env:TERMINAL_DIR
+          if (-not (Test-Path $src)) { Write-Error "Repo has no MQL5/ folder: $src"; exit 13 }
+          robocopy "$src" "$dst" /E /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
+          if ($LASTEXITCODE -ge 8) { Write-Error "robocopy failed $LASTEXITCODE"; exit $LASTEXITCODE }
+
+      - name: Sanity (after sync)
+        shell: powershell
+        run: |
+          $ea = Join-Path $env:TERMINAL_DIR $env:EA_REL
+          Write-Host "METAEDITOR: $env:METAEDITOR"
+          Write-Host "EA_TERM   : $ea"
+          if (-not (Test-Path $env:METAEDITOR)) { Write-Error "MetaEditor not found"; exit 11 }
+          if (-not (Test-Path $ea))             { Write-Error "EA file not found AFTER SYNC"; exit 12 }
+
+      - name: Minimal compile loop (x3)
+        shell: powershell
+        run: |
+          $ea  = Join-Path $env:TERMINAL_DIR $env:EA_REL
+          $ex5 = [IO.Path]::ChangeExtension($ea, '.ex5')
+          if (Test-Path $env:LOG) { Remove-Item -Force $env:LOG }
+          if (Test-Path $ex5)     { Remove-Item -Force $ex5 }
+          $ok = $false
+          for ($i=1; $i -le [int]$env:MAX_ITERS; $i++) {
+            Write-Host "=== Attempt $i/$env:MAX_ITERS ==="
+            $args = @('/compile:"{0}"' -f $ea, '/log:"{0}"' -f $env:LOG)
+            $p = Start-Process -FilePath $env:METAEDITOR -ArgumentList $args -PassThru -WindowStyle Hidden -Wait
+            $rc = $p.ExitCode
+            if (Test-Path $ex5) {
+              Write-Host "OK: built $ex5 (rc=$rc)"; $ok = $true; break
+            } else {
+              Write-Warning "FAIL (rc=$rc). Log tail:"
+              if (Test-Path $env:LOG) { Get-Content $env:LOG -Tail 80 | ForEach-Object { "::notice ::$_" } }
+            }
+          }
+          if (-not $ok) {
+            Write-Error "Compilation failed after $env:MAX_ITERS attempts"
+            if (Test-Path $env:LOG) { Get-Content $env:LOG -Tail 200 }
+            exit 1
+          }
