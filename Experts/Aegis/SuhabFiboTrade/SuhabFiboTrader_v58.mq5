@@ -77,6 +77,21 @@ ulong MagicFromName(const string name);
 double StrToDouble(const string s);
 bool GetTimePriceFromXY(long chart_id,int x,int y,datetime &t,double &p);
 
+//----------------------- STUBS (заглушки) ---------------------------
+string GetFirstEntryObject() { return ""; }
+string GetNextEntryObject(const string current) { return ""; }
+bool ReadEntryPrices(const string entryName, double &L1, double &L2, double &L3, double &L4) { return false; }
+bool ReadTakeCoeffs(const string takeName, double &tp1coeff, double &tp2coeff) { return false; }
+double ComputeAvgUpTo(int i, const double &entriesArr[]) { return 0.0; }
+bool ComputeTableAndTotals(const string entryObj, const string takeObj, double risklimit) { return false; }
+void DrawTableOnChart() {}
+bool PlaceOrdersForActiveConfig() { return false; }
+void DeleteConfig(const string entryObj) {}
+bool CreateTakeFiboFromPoints(const string name, datetime t1, double p1, datetime t2, double p2) { return false; }
+double NormalizeLot(double vol, double step, double minv, double maxv) { return vol; }
+ulong MagicFromName(const string name) { return 0; }
+double StrToDouble(const string s) { return 0.0; }
+
 //----------------------- UI HELPERS ----------------------------------
 void CreateButton(const string name, const string text, int x, int y, int w=140, int h=24) {
    if(ObjectFind(0, name) >= 0) ObjectDelete(0, name);
@@ -159,6 +174,41 @@ bool GetTimePriceFromXY(long chart_id,int x,int y,datetime &t,double &p) {
       PrintFormat("SUHAB ERR: ChartXYToTimePrice failed err=%d", GetLastError());
       return false;
    }
+   return true;
+}
+
+//----------------------- ENTRY FIBO ------------------------------
+bool CreateEntryFiboFromPoints(const string name, datetime t1, double p1, datetime t2, double p2) {
+   string objName = ENTRY_PREFIX + name;
+
+   if(ObjectFind(0,objName)>=0)
+      ObjectDelete(0,objName);
+   if(!ObjectCreate(0, objName, OBJ_FIBO, 0, t1, p1, t2, p2)) {
+      PrintFormat("SUHAB ERR: Не удалось создать Entry Fibo [%s], ошибка=%d", objName, GetLastError());
+      return false;
+   }
+
+   // Вычисление цен уровней согласно коэффициентам fib_left
+   double L1 = p2 + (p1 - p2) * fib_left[0];
+   double L2 = p2 + (p1 - p2) * fib_left[1];
+   double L3 = p2 + (p1 - p2) * fib_left[2];
+   double L4 = p2 + (p1 - p2) * fib_left[3];
+
+   ObjectSetInteger(0, objName, OBJPROP_LEVELS, 4);
+   ObjectSetDouble(0, objName, OBJPROP_LEVELVALUE, 0, L1);
+   ObjectSetDouble(0, objName, OBJPROP_LEVELVALUE, 1, L2);
+   ObjectSetDouble(0, objName, OBJPROP_LEVELVALUE, 2, L3);
+   ObjectSetDouble(0, objName, OBJPROP_LEVELVALUE, 3, L4);
+
+   ObjectSetString(0, objName, OBJPROP_LEVELTEXT, 0, "L1 (" + DoubleToString(fib_left[0],3) + ")");
+   ObjectSetString(0, objName, OBJPROP_LEVELTEXT, 1, "L2 (" + DoubleToString(fib_left[1],3) + ")");
+   ObjectSetString(0, objName, OBJPROP_LEVELTEXT, 2, "L3 (" + DoubleToString(fib_left[2],3) + ")");
+   ObjectSetString(0, objName, OBJPROP_LEVELTEXT, 3, "L4 (" + DoubleToString(fib_left[3],3) + ")");
+
+   ObjectSetInteger(0, objName, OBJPROP_COLOR, clrLime);
+   ObjectSetInteger(0, objName, OBJPROP_RAY, false);
+
+   PrintFormat("Создана Entry Fibo [%s]", objName);
    return true;
 }
 
