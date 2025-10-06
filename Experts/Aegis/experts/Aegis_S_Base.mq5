@@ -4,7 +4,14 @@
 
 #include "..\\includes\\aegis_core.mqh"
 
+#define AE_VIS_VERSION "S-BASE-5.1.0"
+void Aegis_LogVersion()
+{
+  Print("[Aegis] ", __FILE__, " v", AE_VIS_VERSION, " build ", __DATE__, " ", __TIME__);
+}
+
 int OnInit(){
+  Aegis_LogVersion();
   AEG_Log("[INIT] Aegis Base modular start");
   for(int i=0;i<AEG_MAX_SYMS;i++) AEG_Phases[i]=AEG_PH_IDLE;
   return(INIT_SUCCEEDED);
