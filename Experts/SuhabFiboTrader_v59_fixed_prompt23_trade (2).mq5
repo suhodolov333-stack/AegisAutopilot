@@ -74,10 +74,20 @@ int OnInit()
    PrintFormat("Всего ордеров: %d", total_ord);
    for(int j=0; j<total_ord; j++)
      {
-      if(order.Select(j,SELECT_BY_POS,MODE_TRADES))
+      ulong ticket = OrderGetTicket(j);
+      if(ticket==0)
+        {
+         PrintFormat("ORD[%d]: не удалось получить тикет (err=%d)", j, GetLastError());
+         continue;
+        }
+      if(order.Select(ticket))
         {
          PrintFormat("ORD[%d]: Тикет=%I64d  Символ=%s  Объем=%.2f  Цена=%.5f",
                      j, order.Ticket(), order.Symbol(), order.VolumeInitial(), order.PriceOpen());
+        }
+      else
+        {
+         PrintFormat("ORD[%d]: Select(%I64d) завершился ошибкой (err=%d)", j, ticket, GetLastError());
         }
      }
 
