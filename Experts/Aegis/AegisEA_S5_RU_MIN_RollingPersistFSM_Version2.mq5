@@ -18,6 +18,12 @@
 
 #include "includes/aegis_core.mqh"
 
+#define AE_VIS_VERSION "S5-RU-MIN-1.61"
+void Aegis_LogVersion()
+{
+   Print("[Aegis] ", __FILE__, " v", AE_VIS_VERSION, " build ", __DATE__, " ", __TIME__);
+}
+
 ////////////////////////////////////////////////////////////
 // CONSTANTS AND VARIABLES (needed for extracted modules)
 ////////////////////////////////////////////////////////////
@@ -581,6 +587,7 @@ void WriteSummary()
 ////////////////////////////////////////////////////////////
 int OnInit()
 {
+   Aegis_LogVersion();
    g_symbol=Symbol();
    g_NextAvgIndex=(NextAvgIndexInit>0?NextAvgIndexInit:1);
    PrintFormat("[Aegis][S5] Init %s (idx=%d)", g_symbol, g_NextAvgIndex);
