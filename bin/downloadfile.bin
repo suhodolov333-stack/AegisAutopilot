@@ -1,0 +1,10 @@
+# Бинарники и логи
+*.ex5
+*.ex4
+build.log
+backup/
+Tester/
+Logs/
+MQL5/Logs/
+MQL5/Profiles/Tester/
+*.log

@@ -1,0 +1,229 @@
+name: Copilot Full Autopilot
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Режим работы (full = ветка + PR, direct = прямой коммит в main)"
+        required: true
+        default: "full"
+        type: choice
+        options:
+          - full
+          - direct
+      enable_auto_merge:
+        description: "Включить auto-merge для PR (true/false)"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+concurrency:
+  group: autopilot-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+env:
+  GIT_USER_NAME: "Copilot Chat Assistant"
+  GIT_USER_EMAIL: "copilot@yourdomain.com"
+  MAIN_BRANCH: "main"
+  WORK_BRANCH_PREFIX: "autopilot"
+  REPO: "${{ github.repository }}"
+  TZ: "UTC"
+
+jobs:
+  autopilot:
+    name: Run Copilot Full Autopilot
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git identity
+        run: |
+          git config --global user.name  "${GIT_USER_NAME}"
+          git config --global user.email "${GIT_USER_EMAIL}"
+
+      - name: Ensure PAT provided
+        id: pat_check
+        run: |
+          if [ -z "${{ secrets.COPILOT_PAT }}" ]; then
+            echo "❌ Секрет COPILOT_PAT отсутствует. Добавь его в Settings → Secrets → Actions."
+            exit 1
+          else
+            echo "✅ PAT найден."
+          fi
+
+      - name: Switch remote to PAT (write-enabled)
+        run: |
+          git remote set-url origin https://x-access-token:${{ secrets.COPILOT_PAT }}@github.com/${REPO}.git
+          git remote -v
+
+      - name: Determine mode
+        id: mode
+        run: |
+          MODE="${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'full' }}"
+          echo "mode=$MODE" >> $GITHUB_OUTPUT
+          echo "Selected mode: $MODE"
+
+      - name: Compute work branch
+        if: steps.mode.outputs.mode == 'full'
+        id: branch
+        run: |
+          ts="$(date -u +'%Y%m%d-%H%M%S')"
+          work_branch="${WORK_BRANCH_PREFIX}/update-${ts}"
+          echo "work_branch=$work_branch" >> $GITHUB_OUTPUT
+          echo "Will use branch: $work_branch"
+
+      - name: Create and checkout work branch
+        if: steps.mode.outputs.mode == 'full'
+        run: |
+          git checkout -b "${{ steps.branch.outputs.work_branch }}" "${MAIN_BRANCH}"
+
+      - name: Install tooling (example)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+          # Пример установки Node.js (если нужно)
+          # curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+          # sudo apt-get install -y nodejs
+          # npm ci || true
+
+      - name: Run custom automation tasks
+        id: tasks
+        run: |
+          set -e
+          echo "🚀 Запуск пользовательских автоматических задач..."
+          # ------------------ CUSTOM TASKS START ------------------
+          # Добавьте сюда ваши автоматизации: генерация документации, форматирование, обновление зависимостей, тесты и т.п.
+
+          # Пример: авто-форматирование (раскомментируйте если есть prettier)
+          # npx prettier --write .
+
+          # Пример: обновление версии (замените своим сценарием)
+          # if [ -f package.json ]; then
+          #   current_version=$(jq -r '.version' package.json)
+          #   echo "Текущая версия: $current_version"
+          #   IFS='.' read -r major minor patch <<< "$current_version"
+          #   new_version="$major.$minor.$((patch + 1))"
+          #   tmp=$(mktemp)
+          #   jq --arg v "$new_version" '.version = $v' package.json > "$tmp" && mv "$tmp" package.json
+          #   echo "Новая версия: $new_version"
+          # fi
+
+          # Пример: генерация README секции
+          # if grep -q "<!-- AUTOPILOT:STATUS -->" README.md 2>/dev/null; then
+          #   status_block="Обновлено: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          #   awk -v repl="$status_block" '
+          #     /<!-- AUTOPILOT:STATUS -->/ {print; print repl; next} {print}
+          #   ' README.md > README.md.tmp && mv README.md.tmp README.md
+          # fi
+
+          # Пример: запуск тестов
+          # if [ -f package.json ]; then
+          #   npm test || echo "⚠️ Тесты не прошли — обработайте это по вашему сценарию."
+          # fi
+
+          # Добавьте свои сценарии ниже:
+          # ./scripts/generate-schemas.sh || true
+          # ./scripts/sync-openapi.sh || true
+          # ------------------ CUSTOM TASKS END ------------------
+
+          echo "✅ Задачи завершены."
+
+      - name: Detect changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ Нет изменений после задач."
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "✅ Обнаружены изменения."
+            git status --short
+          fi
+
+      - name: Stop if no changes (full mode)
+        if: steps.mode.outputs.mode == 'full' && steps.changes.outputs.changed == 'false'
+        run: echo "Прерывание: нечего коммитить."
+
+      - name: Commit changes (full mode)
+        if: steps.mode.outputs.mode == 'full' && steps.changes.outputs.changed == 'true'
+        run: |
+          git add -A
+          commit_msg="chore(autopilot): automated updates $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          git commit -m "$commit_msg" || echo "Нет файлов для коммита."
+          git log -1 --oneline
+
+      - name: Push branch (full mode)
+        if: steps.mode.outputs.mode == 'full' && steps.changes.outputs.changed == 'true'
+        run: |
+          git push -u origin "${{ steps.branch.outputs.work_branch }}"
+
+      - name: Create or update PR (full mode)
+        if: steps.mode.outputs.mode == 'full' && steps.changes.outputs.changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
+        run: |
+          title="Autopilot: Automated updates ($(date -u +'%Y-%m-%d'))"
+          body=$(cat <<'EOF'
+Автоматически созданный Pull Request.
+
+Содержит:
+- Форматирование / синхронизация / обновления
+- Сгенерированные файлы
+
+Пожалуйста, проверь перед слиянием при необходимости.
+EOF
+)
+          existing_number=$(gh pr list --head "${{ steps.branch.outputs.work_branch }}" --json number --jq '.[0].number' || true)
+          if [ -n "$existing_number" ]; then
+            echo "ℹ️ PR уже существует: #$existing_number"
+            gh pr edit "$existing_number" --title "$title" --body "$body"
+          else
+            gh pr create --head "${{ steps.branch.outputs.work_branch }}" --base "${MAIN_BRANCH}" --title "$title" --body "$body"
+          fi
+
+      - name: Enable auto-merge (full mode)
+        if: steps.mode.outputs.mode == 'full' && steps.changes.outputs.changed == 'true' && inputs.enable_auto_merge == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
+        run: |
+          pr_number=$(gh pr list --head "${{ steps.branch.outputs.work_branch }}" --json number --jq '.[0].number')
+          if [ -z "$pr_number" ]; then
+            echo "❌ PR не найден для авто-merge."
+            exit 0
+          fi
+          echo "Включаем авто-merge для PR #$pr_number"
+          gh pr merge "$pr_number" --auto --squash || echo "⚠️ Не удалось включить auto-merge (возможно ограничено настройками репозитория)."
+
+      - name: Direct mode commit (no PR)
+        if: steps.mode.outputs.mode == 'direct' && steps.changes.outputs.changed == 'true'
+        run: |
+            git checkout "${MAIN_BRANCH}"
+            git add -A
+            commit_msg="chore(autopilot-direct): automated updates $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+            git commit -m "$commit_msg" || echo "Нет изменений."
+            git push origin "${MAIN_BRANCH}"
+
+      - name: Summary
+        run: |
+          echo "================ SUMMARY ================"
+          echo "Mode: ${{ steps.mode.outputs.mode }}"
+          echo "Changes detected: ${{ steps.changes.outputs.changed }}"
+          if [ "${{ steps.mode.outputs.mode }}" = "full" ]; then
+            echo "Branch (if created): ${{ steps.branch.outputs.work_branch }}"
+          fi
+          echo "========================================="

@@ -1,0 +1,9 @@
+{
+  "RepoPath": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\MQL5\\Experts\\Aegis\\config",
+  "MetaEditorPath": "C:\\Program Files\\MetaTrader 5\\metaeditor64.exe",
+  "EAPath": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\MQL5\\Experts\\Aegis\\Aegis_S.mq5",
+  "BackupDir": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\MQL5\\Experts\\Aegis\\config\\backup",
+  "CreateIssueOnError": true,
+  "GitHubRepoSlug": "suhodolov333-stack/AegisAutopilot",
+  "Branch": "main"
+}
