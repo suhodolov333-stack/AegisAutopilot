@@ -16,6 +16,12 @@
 #property version "1.61"
 #property description "Aegis S5 RU MIN: rolling log + state durations + scenarios (DRY, fix trim)"
 
+#define AE_VIS_VERSION "S5-RU-MIN-1.61"
+void Aegis_LogVersion()
+{
+   Print("[Aegis] ", __FILE__, " v", AE_VIS_VERSION, " build ", __DATE__, " ", __TIME__);
+}
+
 ////////////////////////////////////////////////////////////
 // INPUTS
 ////////////////////////////////////////////////////////////
@@ -564,6 +570,7 @@ void WriteSummary()
 ////////////////////////////////////////////////////////////
 int OnInit()
 {
+   Aegis_LogVersion();
    g_symbol=Symbol();
    g_NextAvgIndex=(NextAvgIndexInit>0?NextAvgIndexInit:1);
    PrintFormat("[Aegis][S5] Init %s (idx=%d)", g_symbol, g_NextAvgIndex);
