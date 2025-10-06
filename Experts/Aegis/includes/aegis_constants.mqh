@@ -7,8 +7,8 @@
 string AEG_SYMS[AEG_MAX_SYMS] = {"BTCUSD","LTCUSD","BCHUSD","ETHUSD"};
 
 // Весовая модель сеток 1:1:2:4 (инвариант — Финальное ТЗ)
-double AEG_WEIGHTS[4] = {1,1,2,4};
-double AEG_WEIGHTS_SUM = 8.0;
+const double AEG_WEIGHTS[4] = {1.0,1.0,2.0,4.0};
+const double AEG_WEIGHTS_SUM = 8.0;
 
 // Порог маржинальной проекции (%) — временно фикс
 double AEG_MARGIN_PCT = 45.0;
